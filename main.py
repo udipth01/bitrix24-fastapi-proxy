@@ -26,3 +26,7 @@ async def bolna_proxy(request: Request):
 
     response = requests.post("https://api.bolna.ai/call", json=payload, headers=headers)
     return {"status": "forwarded", "bolna_response": response.text}
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
