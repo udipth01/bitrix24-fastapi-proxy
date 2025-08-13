@@ -16,10 +16,20 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @app.post("/bolna-proxy")
 async def bolna_proxy(request: Request):
-    bitrix_data = await request.json()
+    # ✅ Safe payload parsing
+    try:
+        bitrix_data = await request.json()
+    except Exception:
+        try:
+            form = await request.form()
+            bitrix_data = dict(form)
+        except Exception:
+            body = await request.body()
+            bitrix_data = {"raw_body": body.decode("utf-8")}
+
     lead_name = bitrix_data.get("TITLE", "").lower()
 
-    # 📝 Log to Supabase regardless of condition
+    # 📝 Log to Supabase
     supabase.table("webhook_logs").insert({
         "timestamp": datetime.utcnow().isoformat(),
         "lead_id": bitrix_data.get("ID"),
