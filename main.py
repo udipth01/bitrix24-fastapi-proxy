@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import requests
-
+import os
+token = os.getenv("BOLNA_API_KEY")
 app = FastAPI()
 
 @app.post("/bolna-proxy")
