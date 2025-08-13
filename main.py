@@ -41,13 +41,16 @@ async def bolna_proxy(request: Request):
     lead_data = response.json().get("result", {})
 
     # 📝 Log to Supabase
-    supabase.table("webhook_logs").insert({
-        "timestamp": datetime.utcnow().isoformat(),
-        "lead_id": lead_data.get("ID"),
-        "phone": lead_data.get("PHONE"),
-        "name": lead_data.get("TITLE"),
-        "payload": lead_data
-    }).execute()
+    try:
+        supabase.table("webhook_logs").insert({
+            "timestamp": datetime.utcnow().isoformat(),
+            "lead_id": lead_data.get("ID"),
+            "phone": lead_data.get("PHONE"),
+            "name": lead_data.get("TITLE"),
+            "payload": lead_data
+        }).execute()
+    except Exception as e:
+        print("Supabase insert error:", str(e))
 
     # ✅ Conditional call to Bolna.ai
     if "udipth" not in lead_data.get("TITLE", "").lower():
