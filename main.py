@@ -46,8 +46,10 @@ async def bolna_proxy(request: Request):
     phone = None
     if lead_data.get("PHONE"):
         phone = lead_data["PHONE"][0].get("VALUE")
+    
+    lead_name=lead_data.get('TITLE')
 
-    print(f"✅ Lead name: {lead_data.get('TITLE')}, phone: {phone}")
+    print(f"✅ Lead name: {lead_name}, phone: {phone}")
 
     # 📝 Log to Supabase
     try:
@@ -55,11 +57,15 @@ async def bolna_proxy(request: Request):
             "timestamp": datetime.utcnow().isoformat(),
             "lead_id": lead_data.get("ID"),
             "phone": phone,
-            "name": lead_data.get("TITLE"),
+            "name": lead_name,
             "payload": lead_data
         }).execute()
     except Exception as e:
         print("❌ Supabase insert error:", str(e))
+    
+     # ✅ Conditional call to Bolna.ai
+    if "udipth" not in lead_name:
+        return {"status": "skipped", "reason": "Lead name does not contain 'udipth'"}
 
     # ✅ Send to Bolna.ai if phone exists
     if phone:
@@ -69,7 +75,7 @@ async def bolna_proxy(request: Request):
             "from_phone_number": "+918035316588",  # Replace with your caller number
             "user_data": {
                 "lead_id": lead_data.get("ID"),
-                "lead_name": lead_data.get("TITLE")
+                "lead_name": lead_name
             }
         }
         headers = {
@@ -85,3 +91,28 @@ async def bolna_proxy(request: Request):
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.post("/update-lead-status")
+async def update_lead_status(request: Request):
+    data = await request.json()
+    print("📥 Received function call from Bolna:", data)
+
+    lead_id = data.get("lead_id")
+    status = data.get("qualification_status")
+    notes = data.get("notes", "")
+
+    if not lead_id or not status:
+        return {"status": "error", "reason": "Missing lead_id or status"}
+
+    # Map statuses to Bitrix fields — here we store in COMMENTS
+    bitrix_payload = {
+        "id": lead_id,
+        "fields": {
+            "COMMENTS": f"Qualification: {status}\nNotes: {notes}"
+        }
+    }
+
+    res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=bitrix_payload)
+    print("📤 Bitrix update response:", res.text)
+
+    return {"status": "success", "bitrix_response": res.json()}
