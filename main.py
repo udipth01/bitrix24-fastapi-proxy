@@ -101,18 +101,53 @@ async def update_lead_status(request: Request):
     status = data.get("qualification_status")
     notes = data.get("notes", "")
 
+    # Log in Render/Supabase for debugging
+    try:
+        supabase.table("lead_status_logs").insert({
+            "timestamp": datetime.utcnow().isoformat(),
+            "lead_id": lead_id,
+            "status": status,
+            "notes": notes,
+            "raw_payload": data
+        }).execute()
+    except Exception as e:
+        print("❌ Supabase log insert error:", str(e))
+
     if not lead_id or not status:
         return {"status": "error", "reason": "Missing lead_id or status"}
 
-    # Map statuses to Bitrix fields — here we store in COMMENTS
-    bitrix_payload = {
+    # 1️⃣ Get existing COMMENTS from Bitrix
+    get_res = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id})
+    if get_res.status_code != 200:
+        return {"status": "error", "reason": "Failed to fetch lead", "details": get_res.text}
+
+    lead_data = get_res.json().get("result", {})
+    existing_comments = lead_data.get("COMMENTS", "")
+
+    # 2️⃣ Append AI result to comments
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    new_entry = f"<p><b>AI Qualification ({timestamp}):</b> {status}</p>"
+    if notes:
+        new_entry += f"<p><b>Notes:</b> {notes}</p>"
+
+    updated_comments = existing_comments + new_entry
+
+    # 3️⃣ Update Bitrix lead
+    update_payload = {
         "id": lead_id,
         "fields": {
-            "COMMENTS": f"Qualification: {status}\nNotes: {notes}"
+            "COMMENTS": updated_comments
         }
     }
-
-    res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=bitrix_payload)
+    res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=update_payload)
     print("📤 Bitrix update response:", res.text)
+
+    # 4️⃣ Save updated comments in Supabase
+    try:
+        supabase.table("webhook_logs").update({
+            "comments": updated_comments
+        }).eq("lead_id", lead_id).execute()
+    except Exception as e:
+        print("❌ Supabase comments update error:", str(e))
 
     return {"status": "success", "bitrix_response": res.json()}
