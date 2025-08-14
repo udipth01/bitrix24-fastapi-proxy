@@ -95,13 +95,16 @@ def health_check():
 @app.post("/update-lead-status")
 async def update_lead_status(request: Request):
     data = await request.json()
-    print("📥 Received function call from Bolna:", data)
+    print("📥 Bolna function call received:", data)
 
     lead_id = data.get("lead_id")
     status = data.get("qualification_status")
     notes = data.get("notes", "")
 
-    # Log in Render/Supabase for debugging
+    # Log call in Render
+    print(f"📌 Updating lead {lead_id} -> Status: {status} | Notes: {notes}")
+
+    # Log in Supabase
     try:
         supabase.table("lead_status_logs").insert({
             "timestamp": datetime.utcnow().isoformat(),
@@ -114,35 +117,32 @@ async def update_lead_status(request: Request):
         print("❌ Supabase log insert error:", str(e))
 
     if not lead_id or not status:
-        return {"status": "error", "reason": "Missing lead_id or status"}
+        return {"status": "error", "reason": "Missing lead_id or qualification_status"}
 
-    # 1️⃣ Get existing COMMENTS from Bitrix
+    # Fetch existing Bitrix comments
     get_res = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id})
     if get_res.status_code != 200:
-        return {"status": "error", "reason": "Failed to fetch lead", "details": get_res.text}
+        return {"status": "error", "reason": "Bitrix fetch failed", "details": get_res.text}
 
     lead_data = get_res.json().get("result", {})
     existing_comments = lead_data.get("COMMENTS", "")
 
-    # 2️⃣ Append AI result to comments
+    # Append AI update
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     new_entry = f"<p><b>AI Qualification ({timestamp}):</b> {status}</p>"
     if notes:
         new_entry += f"<p><b>Notes:</b> {notes}</p>"
-
     updated_comments = existing_comments + new_entry
 
-    # 3️⃣ Update Bitrix lead
+    # Update in Bitrix
     update_payload = {
         "id": lead_id,
-        "fields": {
-            "COMMENTS": updated_comments
-        }
+        "fields": {"COMMENTS": updated_comments}
     }
     res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=update_payload)
     print("📤 Bitrix update response:", res.text)
 
-    # 4️⃣ Save updated comments in Supabase
+    # Update in Supabase webhook_logs
     try:
         supabase.table("webhook_logs").update({
             "comments": updated_comments
