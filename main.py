@@ -5,6 +5,7 @@ from supabase import create_client
 from datetime import datetime
 from urllib.parse import parse_qs
 
+
 app = FastAPI()
 
 # 🔐 Environment variables (set these in Render)
@@ -83,33 +84,111 @@ async def bolna_proxy(request: Request):
     return {"status": "skipped", "reason": "No phone number found"}
 
 
+
 @app.post("/post-call-webhook")
 async def post_call_webhook(request: Request):
     """Receives post-call status from Bolna.ai and updates Supabase + Bitrix"""
     data = await request.json()
     print("📥 Post-call webhook received:", data)
 
-    lead_id = data.get("user_data", {}).get("lead_id")
-    user_name = data.get("extractions", {}).get("user_name", "Unknown")
-    interested = data.get("extractions", {}).get("interested", "NA")
-    call_summary = data.get("summary", "")
+    # Extract lead info from context_details
+    lead_id = (
+        data.get("context_details", {})
+            .get("recipient_data", {})
+            .get("lead_id")
+    )
+    lead_name = (
+        data.get("context_details", {})
+            .get("recipient_data", {})
+            .get("lead_name")
+    )
+    recipient_phone = (
+        data.get("context_details", {})
+            .get("recipient_phone_number")
+    )
 
-    # ✅ Save in Supabase (call_logs table)
+    # Extracted tags
+    extracted_data = data.get("extracted_data", {}) or {}
+    user_name = extracted_data.get("user_name", "Unknown")
+    interested = extracted_data.get("interested", "NA")
+
+    # Call metadata
+    call_summary = data.get("summary", "")
+    transcript = data.get("transcript", "")
+    status = data.get("status")
+    conversation_duration = data.get("conversation_duration")
+    total_cost = data.get("total_cost")
+
+    # Telephony details
+    telephony_data = data.get("telephony_data", {}) or {}
+    to_number = telephony_data.get("to_number")
+    from_number = telephony_data.get("from_number")
+    recording_url = telephony_data.get("recording_url")
+    provider_call_id = telephony_data.get("provider_call_id")
+    call_type = telephony_data.get("call_type")
+    telephony_provider = telephony_data.get("provider")
+
+    # ✅ Save in Supabase (bolna_call_logs table)
     try:
-        supabase.table("call_logs").insert({
-            "timestamp": datetime.utcnow().isoformat(),
-            "lead_id": lead_id,
+        supabase.table("bolna_call_logs").insert({
+            "bolna_id": data.get("id"),
+            "agent_id": data.get("agent_id"),
+            "batch_id": data.get("batch_id"),
+            "campaign_id": data.get("campaign_id"),
+
+            "created_at": data.get("created_at"),
+            "updated_at": data.get("updated_at"),
+            "scheduled_at": data.get("scheduled_at"),
+            "rescheduled_at": data.get("rescheduled_at"),
+
+            "status": status,
+            "answered_by_voice_mail": data.get("answered_by_voice_mail"),
+            "conversation_duration": conversation_duration,
+            "total_cost": total_cost,
+            "transcript": transcript,
+            "summary": call_summary,
+            "error_message": data.get("error_message"),
+
+            # extracted tags
             "user_name": user_name,
             "interested": interested,
-            "summary": call_summary,
+
+            # telephony data
+            "telephony_duration": telephony_data.get("duration"),
+            "to_number": to_number,
+            "from_number": from_number,
+            "recording_url": recording_url,
+            "hosted_telephony": telephony_data.get("hosted_telephony"),
+            "provider_call_id": provider_call_id,
+            "call_type": call_type,
+            "telephony_provider": telephony_provider,
+            "hangup_by": telephony_data.get("hangup_by"),
+            "hangup_reason": telephony_data.get("hangup_reason"),
+            "hangup_provider_code": telephony_data.get("hangup_provider_code"),
+
+            # lead mapping
+            "lead_id": lead_id,
+            "lead_name": lead_name,
+            "recipient_phone_number": recipient_phone,
+
+            # breakdowns
+            "usage_breakdown": data.get("usage_breakdown"),
+            "cost_breakdown": data.get("cost_breakdown"),
+
+            # metadata
+            "provider": data.get("provider"),
             "raw_payload": data
         }).execute()
+        print("✅ Supabase insert success")
     except Exception as e:
-        print("❌ Supabase insert error (call_logs):", str(e))
+        print("❌ Supabase insert error:", str(e))
 
-    # ✅ Update Bitrix comments
+    # ✅ Update Bitrix comments log
     if lead_id:
-        get_res = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id})
+        get_res = requests.get(
+            f"{BITRIX_WEBHOOK}crm.lead.get.json",
+            params={"id": lead_id}
+        )
         lead_data = get_res.json().get("result", {})
         existing_comments = lead_data.get("COMMENTS", "")
 
@@ -126,62 +205,102 @@ async def post_call_webhook(request: Request):
             "id": lead_id,
             "fields": {"COMMENTS": updated_comments}
         }
-        res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=update_payload)
+        res = requests.post(
+            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            data=update_payload
+        )
         print("📤 Bitrix update response:", res.text)
 
     return {"status": "success"}
 
 
+
+
 @app.post("/update-lead-status")
 async def update_lead_status(request: Request):
+    """
+    Reads interested status from bolna_call_logs for given lead_id,
+    updates Bitrix lead status & appends comments log.
+    """
     data = await request.json()
-    print("📥 Bolna function call received:", data)
+    print("📥 Update lead status request:", data)
 
     lead_id = data.get("lead_id")
-    status = data.get("qualification_status")
-    notes = data.get("notes", "")
+    if not lead_id:
+        return {"status": "error", "reason": "Missing lead_id"}
 
-    print(f"📌 Updating lead {lead_id} -> Status: {status} | Notes: {notes}")
-
+    # 🔎 Fetch latest record for this lead_id from bolna_call_logs
     try:
-        supabase.table("lead_status_logs").insert({
-            "timestamp": datetime.utcnow().isoformat(),
-            "lead_id": lead_id,
-            "status": status,
-            "notes": notes,
-            "raw_payload": data
-        }).execute()
+        result = (
+            supabase.table("bolna_call_logs")
+            .select("*")
+            .eq("lead_id", lead_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return {"status": "error", "reason": f"No bolna_call_logs entry for lead_id {lead_id}"}
+
+        log_entry = result.data[0]
+        interested = log_entry.get("interested", "NA")
+        user_name = log_entry.get("user_name", "Unknown")
+        call_summary = log_entry.get("summary", "")
+        print(f"📌 Lead {lead_id} | Interested: {interested} | User: {user_name}")
     except Exception as e:
-        print("❌ Supabase log insert error:", str(e))
+        print("❌ Supabase fetch error:", str(e))
+        return {"status": "error", "reason": "Supabase fetch failed"}
 
-    if not lead_id or not status:
-        return {"status": "error", "reason": "Missing lead_id or qualification_status"}
+    # 🟢 Map 'interested' → Bitrix lead STATUS_ID
+    status_map = {
+        "interested": "CONVERTED",   # example: customer wants to move forward
+        "not_interested": "JUNK",    # example: not interested → junk
+        "busy": "IN_PROCESS",        # example: busy → keep in progress
+        "NA": "NEW"                  # fallback → new
+    }
+    bitrix_status = status_map.get(interested, "NEW")
 
+    # 📝 Get existing Bitrix comments
     get_res = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id})
     lead_data = get_res.json().get("result", {})
     existing_comments = lead_data.get("COMMENTS", "")
 
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    new_entry = f"<p><b>AI Qualification ({timestamp}):</b> {status}</p>"
-    if notes:
-        new_entry += f"<p><b>Notes:</b> {notes}</p>"
+    new_entry = f"<p><b>AI Qualification ({timestamp}):</b></p>"
+    new_entry += f"<p>User: {user_name}</p>"
+    new_entry += f"<p>Interest: {interested}</p>"
+    if call_summary:
+        new_entry += f"<p>Summary: {call_summary}</p>"
+
     updated_comments = existing_comments + new_entry
 
+    # 📤 Update Bitrix lead
     update_payload = {
         "id": lead_id,
-        "fields": {"COMMENTS": updated_comments}
+        "fields": {
+            "COMMENTS": updated_comments,
+            "STATUS_ID": bitrix_status
+        }
     }
     res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=update_payload)
     print("📤 Bitrix update response:", res.text)
 
+    # 🗄 Update Supabase log entry with new comments + Bitrix status
     try:
-        supabase.table("webhook_logs").update({
-            "comments": updated_comments
+        supabase.table("bolna_call_logs").update({
+            "bitrix_comments": updated_comments,
+            "bitrix_status": bitrix_status
         }).eq("lead_id", lead_id).execute()
     except Exception as e:
         print("❌ Supabase comments update error:", str(e))
 
-    return {"status": "success", "bitrix_response": res.json()}
+    return {
+        "status": "success",
+        "lead_id": lead_id,
+        "bitrix_status": bitrix_status,
+        "bitrix_response": res.json()
+    }
+
 
 
 @app.get("/health")
