@@ -18,12 +18,10 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @app.post("/bolna-proxy")
 async def bolna_proxy(request: Request):
-    # Read raw body
     raw_body = await request.body()
     raw_text = raw_body.decode("utf-8")
     print("🔹 Raw incoming body:", raw_text)
 
-    # Parse Bitrix form-data payload
     payload = parse_qs(raw_text)
     print("🔹 Parsed payload:", payload)
 
@@ -36,7 +34,6 @@ async def bolna_proxy(request: Request):
     if not lead_id:
         return {"status": "error", "reason": "Lead ID missing"}
 
-    # Fetch full lead details from Bitrix
     lead_url = f"{BITRIX_WEBHOOK}crm.lead.get.json"
     response = requests.get(lead_url, params={"id": lead_id})
     if response.status_code != 200:
@@ -47,11 +44,10 @@ async def bolna_proxy(request: Request):
     if lead_data.get("PHONE"):
         phone = lead_data["PHONE"][0].get("VALUE")
     
-    lead_name=lead_data.get('TITLE')
+    lead_name = lead_data.get("TITLE")
 
     print(f"✅ Lead name: {lead_name}, phone: {phone}")
 
-    # 📝 Log to Supabase
     try:
         supabase.table("webhook_logs").insert({
             "timestamp": datetime.utcnow().isoformat(),
@@ -63,11 +59,9 @@ async def bolna_proxy(request: Request):
     except Exception as e:
         print("❌ Supabase insert error:", str(e))
     
-     # ✅ Conditional call to Bolna.ai
     if "udipth" not in lead_name:
         return {"status": "skipped", "reason": "Lead name does not contain 'udipth'"}
 
-    # ✅ Send to Bolna.ai if phone exists
     if phone:
         bolna_payload = {
             "agent_id": "950c36e8-92ed-4a21-9764-03267e2f6039",  # Replace with your agent ID
@@ -88,9 +82,55 @@ async def bolna_proxy(request: Request):
 
     return {"status": "skipped", "reason": "No phone number found"}
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
+
+@app.post("/post-call-webhook")
+async def post_call_webhook(request: Request):
+    """Receives post-call status from Bolna.ai and updates Supabase + Bitrix"""
+    data = await request.json()
+    print("📥 Post-call webhook received:", data)
+
+    lead_id = data.get("user_data", {}).get("lead_id")
+    user_name = data.get("extractions", {}).get("user_name", "Unknown")
+    interested = data.get("extractions", {}).get("interested", "NA")
+    call_summary = data.get("summary", "")
+
+    # ✅ Save in Supabase (call_logs table)
+    try:
+        supabase.table("call_logs").insert({
+            "timestamp": datetime.utcnow().isoformat(),
+            "lead_id": lead_id,
+            "user_name": user_name,
+            "interested": interested,
+            "summary": call_summary,
+            "raw_payload": data
+        }).execute()
+    except Exception as e:
+        print("❌ Supabase insert error (call_logs):", str(e))
+
+    # ✅ Update Bitrix comments
+    if lead_id:
+        get_res = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id})
+        lead_data = get_res.json().get("result", {})
+        existing_comments = lead_data.get("COMMENTS", "")
+
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        new_entry = f"<p><b>Post-call Update ({timestamp}):</b></p>"
+        new_entry += f"<p>User: {user_name}</p>"
+        new_entry += f"<p>Interest: {interested}</p>"
+        if call_summary:
+            new_entry += f"<p>Summary: {call_summary}</p>"
+
+        updated_comments = existing_comments + new_entry
+
+        update_payload = {
+            "id": lead_id,
+            "fields": {"COMMENTS": updated_comments}
+        }
+        res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=update_payload)
+        print("📤 Bitrix update response:", res.text)
+
+    return {"status": "success"}
+
 
 @app.post("/update-lead-status")
 async def update_lead_status(request: Request):
@@ -101,10 +141,8 @@ async def update_lead_status(request: Request):
     status = data.get("qualification_status")
     notes = data.get("notes", "")
 
-    # Log call in Render
     print(f"📌 Updating lead {lead_id} -> Status: {status} | Notes: {notes}")
 
-    # Log in Supabase
     try:
         supabase.table("lead_status_logs").insert({
             "timestamp": datetime.utcnow().isoformat(),
@@ -119,22 +157,16 @@ async def update_lead_status(request: Request):
     if not lead_id or not status:
         return {"status": "error", "reason": "Missing lead_id or qualification_status"}
 
-    # Fetch existing Bitrix comments
     get_res = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id})
-    if get_res.status_code != 200:
-        return {"status": "error", "reason": "Bitrix fetch failed", "details": get_res.text}
-
     lead_data = get_res.json().get("result", {})
     existing_comments = lead_data.get("COMMENTS", "")
 
-    # Append AI update
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     new_entry = f"<p><b>AI Qualification ({timestamp}):</b> {status}</p>"
     if notes:
         new_entry += f"<p><b>Notes:</b> {notes}</p>"
     updated_comments = existing_comments + new_entry
 
-    # Update in Bitrix
     update_payload = {
         "id": lead_id,
         "fields": {"COMMENTS": updated_comments}
@@ -142,7 +174,6 @@ async def update_lead_status(request: Request):
     res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=update_payload)
     print("📤 Bitrix update response:", res.text)
 
-    # Update in Supabase webhook_logs
     try:
         supabase.table("webhook_logs").update({
             "comments": updated_comments
@@ -151,3 +182,8 @@ async def update_lead_status(request: Request):
         print("❌ Supabase comments update error:", str(e))
 
     return {"status": "success", "bitrix_response": res.json()}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
