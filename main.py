@@ -84,7 +84,6 @@ async def bolna_proxy(request: Request):
     return {"status": "skipped", "reason": "No phone number found"}
 
 
-
 @app.post("/post-call-webhook")
 async def post_call_webhook(request: Request):
     """Receives post-call status from Bolna.ai and updates Supabase + Bitrix"""
@@ -92,20 +91,9 @@ async def post_call_webhook(request: Request):
     print("📥 Post-call webhook received:", data)
 
     # Extract lead info from context_details
-    lead_id = (
-        data.get("context_details", {})
-            .get("recipient_data", {})
-            .get("lead_id")
-    )
-    lead_name = (
-        data.get("context_details", {})
-            .get("recipient_data", {})
-            .get("lead_name")
-    )
-    recipient_phone = (
-        data.get("context_details", {})
-            .get("recipient_phone_number")
-    )
+    lead_id = data.get("context_details", {}).get("recipient_data", {}).get("lead_id")
+    lead_name = data.get("context_details", {}).get("recipient_data", {}).get("lead_name")
+    recipient_phone = data.get("context_details", {}).get("recipient_phone_number")
 
     # Extracted tags
     extracted_data = data.get("extracted_data", {}) or {}
@@ -130,7 +118,7 @@ async def post_call_webhook(request: Request):
 
     # ✅ Save in Supabase (bolna_call_logs table)
     try:
-        supabase.table("bolna_call_logs").insert({
+        payload = {
             "bolna_id": data.get("id"),
             "agent_id": data.get("agent_id"),
             "batch_id": data.get("batch_id"),
@@ -178,8 +166,10 @@ async def post_call_webhook(request: Request):
             # metadata
             "provider": data.get("provider"),
             "raw_payload": data
-        }).execute()
-        print("✅ Supabase insert success")
+        }
+
+        res = supabase.table("bolna_call_logs").insert(payload).execute()
+        print("✅ Supabase insert success:", res)
     except Exception as e:
         print("❌ Supabase insert error:", str(e))
 
@@ -201,10 +191,7 @@ async def post_call_webhook(request: Request):
 
         updated_comments = existing_comments + new_entry
 
-        update_payload = {
-            "id": lead_id,
-            "fields": {"COMMENTS": updated_comments}
-        }
+        update_payload = {"id": lead_id, "fields": {"COMMENTS": updated_comments}}
         res = requests.post(
             f"{BITRIX_WEBHOOK}crm.lead.update.json",
             data=update_payload
