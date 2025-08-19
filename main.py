@@ -191,12 +191,26 @@ async def post_call_webhook(request: Request):
 
         updated_comments = existing_comments + new_entry
 
+        # ✅ Base payload for updating lead
+        update_fields = {
+            "COMMENTS": updated_comments
+        }
+
+
+        # ✅ If interested, move lead status to "CONVERTED" (Deal)
+        if interested.lower() == "interested":
+            update_fields["STATUS_ID"] = "CONVERTED"   # <-- check your Bitrix status code for "Deal"
+
         update_payload = {
             "id": lead_id,
-            "fields": {
-                "COMMENTS": updated_comments
-            }
+            "fields": update_fields
         }
+
+        res = requests.post(
+            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            json=update_payload
+        )
+        print("📤 Bitrix update response:", res.text)
 
         res = requests.post(
             f"{BITRIX_WEBHOOK}crm.lead.update.json",
