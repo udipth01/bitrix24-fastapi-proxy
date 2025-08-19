@@ -116,6 +116,10 @@ async def post_call_webhook(request: Request):
     call_type = telephony_data.get("call_type")
     telephony_provider = telephony_data.get("provider")
 
+    res = supabase.table("bolna_call_logs").insert({"lead_id": "test123"}).execute()
+    print(res)
+
+
     # ✅ Save in Supabase (bolna_call_logs table)
     try:
         payload = {
@@ -199,94 +203,6 @@ async def post_call_webhook(request: Request):
         print("📤 Bitrix update response:", res.text)
 
     return {"status": "success"}
-
-
-
-
-@app.post("/update-lead-status")
-async def update_lead_status(request: Request):
-    """
-    Reads interested status from bolna_call_logs for given lead_id,
-    updates Bitrix lead status & appends comments log.
-    """
-    data = await request.json()
-    print("📥 Update lead status request:", data)
-
-    lead_id = data.get("lead_id")
-    if not lead_id:
-        return {"status": "error", "reason": "Missing lead_id"}
-
-    # 🔎 Fetch latest record for this lead_id from bolna_call_logs
-    try:
-        result = (
-            supabase.table("bolna_call_logs")
-            .select("*")
-            .eq("lead_id", lead_id)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if not result.data:
-            return {"status": "error", "reason": f"No bolna_call_logs entry for lead_id {lead_id}"}
-
-        log_entry = result.data[0]
-        interested = log_entry.get("interested", "NA")
-        user_name = log_entry.get("user_name", "Unknown")
-        call_summary = log_entry.get("summary", "")
-        print(f"📌 Lead {lead_id} | Interested: {interested} | User: {user_name}")
-    except Exception as e:
-        print("❌ Supabase fetch error:", str(e))
-        return {"status": "error", "reason": "Supabase fetch failed"}
-
-    # 🟢 Map 'interested' → Bitrix lead STATUS_ID
-    status_map = {
-        "interested": "CONVERTED",   # example: customer wants to move forward
-        "not_interested": "JUNK",    # example: not interested → junk
-        "busy": "IN_PROCESS",        # example: busy → keep in progress
-        "NA": "NEW"                  # fallback → new
-    }
-    bitrix_status = status_map.get(interested, "NEW")
-
-    # 📝 Get existing Bitrix comments
-    get_res = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id})
-    lead_data = get_res.json().get("result", {})
-    existing_comments = lead_data.get("COMMENTS", "")
-
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    new_entry = f"<p><b>AI Qualification ({timestamp}):</b></p>"
-    new_entry += f"<p>User: {user_name}</p>"
-    new_entry += f"<p>Interest: {interested}</p>"
-    if call_summary:
-        new_entry += f"<p>Summary: {call_summary}</p>"
-
-    updated_comments = existing_comments + new_entry
-
-    # 📤 Update Bitrix lead
-    update_payload = {
-        "id": lead_id,
-        "fields": {
-            "COMMENTS": updated_comments,
-            "STATUS_ID": bitrix_status
-        }
-    }
-    res = requests.post(f"{BITRIX_WEBHOOK}crm.lead.update.json", data=update_payload)
-    print("📤 Bitrix update response:", res.text)
-
-    # 🗄 Update Supabase log entry with new comments + Bitrix status
-    try:
-        supabase.table("bolna_call_logs").update({
-            "bitrix_comments": updated_comments,
-            "bitrix_status": bitrix_status
-        }).eq("lead_id", lead_id).execute()
-    except Exception as e:
-        print("❌ Supabase comments update error:", str(e))
-
-    return {
-        "status": "success",
-        "lead_id": lead_id,
-        "bitrix_status": bitrix_status,
-        "bitrix_response": res.json()
-    }
 
 
 
