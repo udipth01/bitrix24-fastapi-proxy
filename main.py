@@ -116,109 +116,112 @@ async def post_call_webhook(request: Request):
     call_type = telephony_data.get("call_type")
     telephony_provider = telephony_data.get("provider")
 
-    # ✅ Save in Supabase (bolna_call_logs table)
-    try:
-        payload = {
-            "bolna_id": data.get("id"),
-            "agent_id": data.get("agent_id"),
-            "batch_id": data.get("batch_id"),
-            "campaign_id": data.get("campaign_id"),
+    if status == 'completed':
+        # ✅ Save in Supabase (bolna_call_logs table)
+        try:
+            payload = {
+                "bolna_id": data.get("id"),
+                "agent_id": data.get("agent_id"),
+                "batch_id": data.get("batch_id"),
+                "campaign_id": data.get("campaign_id"),
 
-            "created_at": data.get("created_at"),
-            "updated_at": data.get("updated_at"),
-            "scheduled_at": data.get("scheduled_at"),
-            "rescheduled_at": data.get("rescheduled_at"),
+                "created_at": data.get("created_at"),
+                "updated_at": data.get("updated_at"),
+                "scheduled_at": data.get("scheduled_at"),
+                "rescheduled_at": data.get("rescheduled_at"),
 
-            "status": status,
-            "answered_by_voice_mail": data.get("answered_by_voice_mail"),
-            "conversation_duration": conversation_duration,
-            "total_cost": total_cost,
-            "transcript": transcript,
-            "summary": call_summary,
-            "error_message": data.get("error_message"),
+                "status": status,
+                "answered_by_voice_mail": data.get("answered_by_voice_mail"),
+                "conversation_duration": conversation_duration,
+                "total_cost": total_cost,
+                "transcript": transcript,
+                "summary": call_summary,
+                "error_message": data.get("error_message"),
 
-            # extracted tags
-            "user_name": user_name,
-            "interested": interested,
+                # extracted tags
+                "user_name": user_name,
+                "interested": interested,
 
-            # telephony data
-            "telephony_duration": telephony_data.get("duration"),
-            "to_number": to_number,
-            "from_number": from_number,
-            "recording_url": recording_url,
-            "hosted_telephony": telephony_data.get("hosted_telephony"),
-            "provider_call_id": provider_call_id,
-            "call_type": call_type,
-            "telephony_provider": telephony_provider,
-            "hangup_by": telephony_data.get("hangup_by"),
-            "hangup_reason": telephony_data.get("hangup_reason"),
-            "hangup_provider_code": telephony_data.get("hangup_provider_code"),
+                # telephony data
+                "telephony_duration": telephony_data.get("duration"),
+                "to_number": to_number,
+                "from_number": from_number,
+                "recording_url": recording_url,
+                "hosted_telephony": telephony_data.get("hosted_telephony"),
+                "provider_call_id": provider_call_id,
+                "call_type": call_type,
+                "telephony_provider": telephony_provider,
+                "hangup_by": telephony_data.get("hangup_by"),
+                "hangup_reason": telephony_data.get("hangup_reason"),
+                "hangup_provider_code": telephony_data.get("hangup_provider_code"),
 
-            # lead mapping
-            "lead_id": lead_id,
-            "lead_name": lead_name,
-            "recipient_phone_number": recipient_phone,
+                # lead mapping
+                "lead_id": lead_id,
+                "lead_name": lead_name,
+                "recipient_phone_number": recipient_phone,
 
-            # breakdowns
-            "usage_breakdown": data.get("usage_breakdown"),
-            "cost_breakdown": data.get("cost_breakdown"),
+                # breakdowns
+                "usage_breakdown": data.get("usage_breakdown"),
+                "cost_breakdown": data.get("cost_breakdown"),
 
-            # metadata
-            "provider": data.get("provider"),
-            "raw_payload": data
-        }
+                # metadata
+                "provider": data.get("provider"),
+                "raw_payload": data
+            }
 
-        res = supabase.table("bolna_call_logs").insert(payload).execute()
-        print("✅ Supabase insert success:", res)
-    except Exception as e:
-        print("❌ Supabase insert error:", str(e))
+            res = supabase.table("bolna_call_logs").insert(payload).execute()
+            print("✅ Supabase insert success:", res)
+        except Exception as e:
+            print("❌ Supabase insert error:", str(e))
 
-    # ✅ Update Bitrix comments log
-    if lead_id:
-        get_res = requests.get(
-            f"{BITRIX_WEBHOOK}crm.lead.get.json",
-            params={"id": lead_id}
-        )
-        lead_data = get_res.json().get("result", {})
-        existing_comments = lead_data.get("COMMENTS", "")
+        # ✅ Update Bitrix comments log
+        if lead_id:
+            get_res = requests.get(
+                f"{BITRIX_WEBHOOK}crm.lead.get.json",
+                params={"id": lead_id}
+            )
+            lead_data = get_res.json().get("result", {})
+            existing_comments = lead_data.get("COMMENTS", "")
 
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-        new_entry = f"<p><b>Post-call Update ({timestamp}):</b></p>"
-        new_entry += f"<p>Transcript: {transcript}</p>"
-        new_entry += f"<p>Interest: {interested}</p>"
-        if call_summary:
-            new_entry += f"<p>Summary: {call_summary}</p>"
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            new_entry = f"<p><b>Post-call Update ({timestamp}):</b></p>"
+            new_entry += f"<p>Transcript: {transcript}</p>"
+            new_entry += f"<p>Interest: {interested}</p>"
+            new_entry += f"<p>Recording: {recording_url}</p>"
+            if call_summary:
+                new_entry += f"<p>Summary: {call_summary}</p>"
 
-        updated_comments = existing_comments + new_entry
+            updated_comments = existing_comments + new_entry
 
-        # ✅ Base payload for updating lead
-        update_fields = {
-            "COMMENTS": updated_comments
-        }
+            # ✅ Base payload for updating lead
+            update_fields = {
+                "COMMENTS": updated_comments
+            }
 
 
-        # ✅ If interested, move lead status to "CONVERTED" (Deal)
-        if interested.lower() == "interested":
-            update_fields["STATUS_ID"] = "CONVERTED"   # <-- check your Bitrix status code for "Deal"
+            # ✅ If interested, move lead status to "CONVERTED" (Deal)
+            if interested.lower() == "interested":
+                update_fields["STATUS_ID"] = "CONVERTED"   # <-- check your Bitrix status code for "Deal"
 
-        update_payload = {
-            "id": lead_id,
-            "fields": update_fields
-        }
+            update_payload = {
+                "id": lead_id,
+                "fields": update_fields
+            }
 
-        res = requests.post(
-            f"{BITRIX_WEBHOOK}crm.lead.update.json",
-            json=update_payload
-        )
-        print("📤 Bitrix update response:", res.text)
+            res = requests.post(
+                f"{BITRIX_WEBHOOK}crm.lead.update.json",
+                json=update_payload
+            )
+            print("📤 Bitrix update response:", res.text)
 
-        res = requests.post(
-            f"{BITRIX_WEBHOOK}crm.lead.update.json",
-            json=update_payload  # <-- use json= instead of data=
-        )
-        print("📤 Bitrix update response:", res.text)
+            res = requests.post(
+                f"{BITRIX_WEBHOOK}crm.lead.update.json",
+                json=update_payload  # <-- use json= instead of data=
+            )
+            print("📤 Bitrix update response:", res.text)
 
-    return {"status": "success"}
+        return {"status": "success"}
+    return {"status": status}
 
 
 
