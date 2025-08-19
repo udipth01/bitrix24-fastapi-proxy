@@ -60,8 +60,8 @@ async def bolna_proxy(request: Request):
     except Exception as e:
         print("❌ Supabase insert error:", str(e))
     
-    if "udipth" not in lead_name:
-        return {"status": "skipped", "reason": "Lead name does not contain 'udipth'"}
+    if "SWCIAD_" not in lead_name:
+        return {"status": "skipped", "reason": "Lead name does not contain 'SWCIAD_'"}
 
     if phone:
         bolna_payload = {
