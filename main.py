@@ -77,7 +77,7 @@ async def bolna_proxy(request: Request):
 
     try:
         supabase.table("webhook_logs").insert({
-            "timestamp": utc_to_ist(datetime.utcnow().isoformat()),
+            "timestamp": datetime.utcnow().isoformat(),
             "lead_id": lead_data.get("ID"),
             "phone": phone,
             "name": lead_name,
@@ -151,9 +151,9 @@ async def post_call_webhook(request: Request):
                 "batch_id": data.get("batch_id"),
                 "campaign_id": data.get("campaign_id"),
 
-                "created_at": utc_to_ist(data.get("created_at")),
-                "updated_at": utc_to_ist(data.get("updated_at")),
-                "scheduled_at": utc_to_ist(data.get("scheduled_at")),
+                "created_at": data.get("created_at"),
+                "updated_at": data.get("updated_at"),
+                "scheduled_at": data.get("scheduled_at"),
                 "rescheduled_at": data.get("rescheduled_at"),
 
                 "status": status,
@@ -209,7 +209,7 @@ async def post_call_webhook(request: Request):
             lead_data = get_res.json().get("result", {})
             existing_comments = lead_data.get("COMMENTS", "")
 
-            timestamp = utc_to_ist(datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"))
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
             new_entry = f"<p><b>Post-call Update ({timestamp}):</b></p>"
             new_entry += f"<p>Transcript: {transcript}</p>"
             new_entry += f"<p>Interest: {interested}</p>"
