@@ -184,17 +184,23 @@ async def post_call_webhook(request: Request):
 
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
         new_entry = f"<p><b>Post-call Update ({timestamp}):</b></p>"
-        new_entry += f"<p>User: {user_name}</p>"
+        new_entry += f"<p>Transcript: {transcript}</p>"
         new_entry += f"<p>Interest: {interested}</p>"
         if call_summary:
             new_entry += f"<p>Summary: {call_summary}</p>"
 
         updated_comments = existing_comments + new_entry
 
-        update_payload = {"id": lead_id, "fields": {"COMMENTS": updated_comments}}
+        update_payload = {
+            "id": lead_id,
+            "fields": {
+                "COMMENTS": updated_comments
+            }
+        }
+
         res = requests.post(
             f"{BITRIX_WEBHOOK}crm.lead.update.json",
-            data=update_payload
+            json=update_payload  # <-- use json= instead of data=
         )
         print("📤 Bitrix update response:", res.text)
 
