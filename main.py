@@ -116,10 +116,6 @@ async def post_call_webhook(request: Request):
     call_type = telephony_data.get("call_type")
     telephony_provider = telephony_data.get("provider")
 
-    res = supabase.table("bolna_call_logs").insert({"lead_id": "test123"}).execute()
-    print(res)
-
-
     # ✅ Save in Supabase (bolna_call_logs table)
     try:
         payload = {
