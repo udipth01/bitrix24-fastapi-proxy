@@ -227,8 +227,8 @@ async def post_call_webhook(request: Request):
 
             # ✅ If interested, move lead status to "CONVERTED" (Deal)
             if interested.lower() == "interested":
-                update_fields["STATUS_ID"] = "CONVERTED"   # <-- check your Bitrix status code for "Deal"
-
+               # <-- update_fields["STATUS_ID"] = "CONVERTED"   
+                update_fields["STATUS_ID"] = "PROCESSED"   # <-- check your Bitrix status code for "Deal"
             update_payload = {
                 "id": lead_id,
                 "fields": update_fields
