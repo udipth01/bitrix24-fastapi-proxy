@@ -213,7 +213,11 @@ async def post_call_webhook(request: Request):
             new_entry = f"<p><b>Post-call Update ({timestamp}):</b></p>"
             new_entry += f"<p>Transcript: {transcript}</p>"
             new_entry += f"<p>Interest: {interested}</p>"
-            new_entry += f"<p>Recording: {recording_url}</p>"
+
+            # 🔗 Wrap recording link in HTML so Bitrix doesn't truncate
+            if recording_url:
+                new_entry += f'<p>Recording: <a href="{recording_url}" target="_blank">{recording_url}</a> </p>'
+
             if call_summary:
                 new_entry += f"<p>Summary: {call_summary}</p>"
 
