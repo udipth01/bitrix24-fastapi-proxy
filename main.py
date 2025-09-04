@@ -239,12 +239,13 @@ async def post_call_webhook(request: Request):
                 json=update_payload
             )
             print("📤 Bitrix update response:", res.text)
+            print("📤 Bitrix payload:", update_payload)
 
-            res = requests.post(
-                f"{BITRIX_WEBHOOK}crm.lead.update.json",
-                json=update_payload  # <-- use json= instead of data=
-            )
-            print("📤 Bitrix update response:", res.text)
+            # res = requests.post(
+            #     f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            #     json=update_payload  # <-- use json= instead of data=
+            # )
+            # print("📤 Bitrix update response:", res.text)
 
         return {"status": "success"}
     return {"status": status}
