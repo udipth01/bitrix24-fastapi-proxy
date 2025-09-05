@@ -207,7 +207,8 @@ async def post_call_webhook(request: Request):
                 params={"id": lead_id}
             )
             lead_data = get_res.json().get("result", {})
-            existing_comments = lead_data.get("COMMENTS", "")
+            existing_comments = lead_data.get("COMMENTS") or ""
+
 
             timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
             new_entry = f"<p><b>Post-call Update ({timestamp}):</b></p>"
