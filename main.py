@@ -91,7 +91,7 @@ async def bolna_proxy(request: Request):
 
     # Select agent based on lead_name
     if "udipth" in lead_name.lower():
-        agent_id = "35a2f74e-0401-4b5b-8d28-59a73fc05dd3"
+        agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
     else:
         agent_id = "950c36e8-92ed-4a21-9764-03267e2f6039"
         
