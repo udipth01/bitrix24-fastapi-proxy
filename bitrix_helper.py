@@ -1,7 +1,8 @@
 import requests
+import os
 
 # Replace with your webhook URL (no method at the end, just base)
-BITRIX_WEBHOOK_URL = "https://finideas.bitrix24.in/rest/24/hdyr7b0qithutnpx/"
+BITRIX_WEBHOOK_URL = os.getenv("BITRIX_WEBHOOK")
 
 def get_lead_statuses():
     """Fetch and print all lead statuses from Bitrix24."""
