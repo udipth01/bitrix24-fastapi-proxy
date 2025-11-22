@@ -94,11 +94,12 @@ async def bolna_proxy(request: Request):
         agent_id = "35a2f74e-0401-4b5b-8d28-59a73fc05dd3"
     else:
         agent_id = "950c36e8-92ed-4a21-9764-03267e2f6039"
+        
 
 
     if phone:
         bolna_payload = {
-            "agent_id": "950c36e8-92ed-4a21-9764-03267e2f6039",  # Replace with your agent ID
+            "agent_id": agent_id,  # Replace with your agent ID
             "recipient_phone_number": phone,
             "from_phone_number": "+918035316588",  # Replace with your caller number
             "user_data": {
