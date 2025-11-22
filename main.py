@@ -116,10 +116,13 @@ async def post_call_webhook(request: Request):
     data = await request.json()
     print("📥 Post-call webhook received:", data)
 
-    # Extract lead info from context_details
-    lead_id = data.get("context_details", {}).get("recipient_data", {}).get("lead_id")
-    lead_name = data.get("context_details", {}).get("recipient_data", {}).get("lead_name")
-    recipient_phone = data.get("context_details", {}).get("recipient_phone_number")
+    # Extract lead info safely
+    context = data.get("context_details") or {}
+
+    recipient_data = context.get("recipient_data") or {}  # if None → {}
+    lead_id = recipient_data.get("lead_id")
+    lead_name = recipient_data.get("lead_name")
+    recipient_phone = context.get("recipient_phone_number")
 
     # Extracted tags
     extracted_data = data.get("extracted_data", {}) or {}
