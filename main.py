@@ -86,12 +86,17 @@ async def bolna_proxy(request: Request):
     except Exception as e:
         print("❌ Supabase insert error:", str(e))
     
-    if "swciad_" not in lead_name.lower() or "udipth" not in lead_name.lower():
+    if "swciad_" not in lead_name.lower() and "udipth" not in lead_name.lower():
         return {"status": "skipped", "reason": "Lead name does not contain 'SWCIAD_' or 'udipth'"}
 
+    # Select agent based on lead_name
+    if "udipth" in lead_name.lower():
+        agent_id = "35a2f74e-0401-4b5b-8d28-59a73fc05dd3"
+    else:
+        agent_id = "950c36e8-92ed-4a21-9764-03267e2f6039"
 
 
-    if phone and "udipth" not in lead_name.lower():
+    if phone:
         bolna_payload = {
             "agent_id": "950c36e8-92ed-4a21-9764-03267e2f6039",  # Replace with your agent ID
             "recipient_phone_number": phone,
@@ -101,18 +106,6 @@ async def bolna_proxy(request: Request):
                 "lead_name": lead_name
             }
         }
-    else: 
-        if "udipth" in lead_name.lower():
-            bolna_payload = {
-            "agent_id": "35a2f74e-0401-4b5b-8d28-59a73fc05dd3",  # Replace with your agent ID
-            "recipient_phone_number": phone,
-            "from_phone_number": "+918035316588",  # Replace with your caller number
-            "user_data": {
-                "lead_id": lead_data.get("ID"),
-                "lead_name": lead_name
-            }
-        }
-        
         headers = {
             "Authorization": f"Bearer {BOLNA_TOKEN}",
             "Content-Type": "application/json"
