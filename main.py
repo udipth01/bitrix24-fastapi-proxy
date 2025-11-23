@@ -83,14 +83,14 @@ def parse_budget_to_number(budget_str: str | None) -> int | None:
     return n * multiplier
 
 
-def parse_rm_meeting_time(rm_str: str | None) -> str | None:
+def parse_rm_meeting_time(rm_str: str | None):
     """
-    Parse RM_meeting_time into a Bitrix-friendly datetime string.
-    Handles things like "tomorrow 14:00".
-    Returns: "YYYY-MM-DDTHH:MM:SS" or None if it can't parse.
+    Returns:
+      - start_dt: Bitrix datetime 'YYYY-MM-DDTHH:MM:SS'
+      - date_only: 'YYYY-MM-DD'
     """
     if not rm_str:
-        return None
+        return None, None
 
     s = rm_str.lower()
     ist_zone = pytz.timezone("Asia/Kolkata")
@@ -101,20 +101,23 @@ def parse_rm_meeting_time(rm_str: str | None) -> str | None:
     if "tomorrow" in s and m:
         hour = int(m.group(1))
         minute = int(m.group(2))
-        dt = (now_ist + timedelta(days=1)).replace(hour=hour, minute=minute, second=0, microsecond=0)
-        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+        dt = (now_ist + timedelta(days=1)).replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
 
-    # Try simple "YYYY-MM-DD HH:MM"
+    # Case: explicit date formats
     for fmt in ["%Y-%m-%d %H:%M", "%d-%m-%Y %H:%M"]:
         try:
             dt = datetime.strptime(rm_str, fmt)
             dt = ist_zone.localize(dt)
-            return dt.strftime("%Y-%m-%dT%H:%M:%S")
-        except Exception:
+            return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
+        except:
             continue
 
     print("⚠️ Could not parse RM_meeting_time:", rm_str)
-    return None
+    return None, None
+
 
 
 # ---------- Config ----------
@@ -390,47 +393,42 @@ async def post_call_webhook(request: Request):
                 deal_id = deal_result.get("result")
 
                 # 2️⃣ Create Activity for RM meeting if we have a time and deal_id
+                start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
+
                 if deal_id and rm_meeting_time_raw:
-                    start_time = parse_rm_meeting_time(rm_meeting_time_raw)
-                    if start_time:
-                        # 30-min duration
-                        try:
-                            dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
-                            dt_end = dt_start + timedelta(minutes=30)
-                            end_time = dt_end.strftime("%Y-%m-%dT%H:%M:%S")
-                        except Exception:
-                            # Fallback: same start/end
-                            end_time = start_time
+                    dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
+                    dt_end = dt_start + timedelta(minutes=30)
 
-                        activity_fields = {
-                            "OWNER_TYPE_ID": 2,  # 2 = Deal
-                            "OWNER_ID": deal_id,
-                            "TYPE_ID": 2,  # 2 = Call
-                            "SUBJECT": "Scheduled RM Call – Auto-created from Voicebot",
-                            "START_TIME": start_time,
-                            "END_TIME": end_time,
-                            "DESCRIPTION": (
-                                f"RM Meeting scheduled by voicebot.\n"
-                                f"RM_meeting_time: {rm_meeting_time_raw}\n"
-                                f"Investment Budget: {investment_budget_raw}\n"
-                            ),
-                            "DIRECTION": 2,  # 2 = outgoing
-                            "COMMUNICATIONS": [
-                                {
-                                    "VALUE": recipient_phone or to_number,
-                                    "ENTITY_TYPE_ID": 2,
-                                    "ENTITY_ID": deal_id,
-                                }
-                            ],
-                        }
+                    activity_fields = {
+                        "OWNER_TYPE_ID": 2,
+                        "OWNER_ID": deal_id,
+                        "TYPE_ID": 2,
+                        "SUBJECT": "Scheduled RM Call – Auto-created from Voicebot",
+                        "START_TIME": dt_start.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "END_TIME": dt_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "DESCRIPTION": (
+                            f"RM Meeting scheduled by voicebot.\n"
+                            f"RM_meeting_time_raw: {rm_meeting_time_raw}\n"
+                            f"Parsed date: {date_only}\n"
+                            f"Investment Budget: {investment_budget_raw}\n"
+                        ),
+                        "DIRECTION": 2,
+                        "COMMUNICATIONS": [
+                            {
+                                "VALUE": recipient_phone or to_number,
+                                "ENTITY_TYPE_ID": 2,
+                                "ENTITY_ID": deal_id,
+                            }
+                        ],
+                    }
 
-                        activity_payload = {"fields": activity_fields}
-                        act_res = requests.post(
-                            f"{BITRIX_WEBHOOK}crm.activity.add.json",
-                            json=activity_payload,
-                        )
-                        print("📤 Bitrix activity add response:", act_res.text)
-                        print("📤 Bitrix activity payload:", activity_payload)
+                    activity_payload = {"fields": activity_fields}
+                    act_res = requests.post(
+                        f"{BITRIX_WEBHOOK}crm.activity.add.json",
+                        json=activity_payload
+                    )
+                    print("📤 Activity response:", act_res.text)
+                    print("📤 Bitrix activity payload:", activity_payload)
 
         return {"status": "success"}
 
