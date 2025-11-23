@@ -430,6 +430,49 @@ async def post_call_webhook(request: Request):
                     print("📤 Activity response:", act_res.text)
                     print("📤 Bitrix activity payload:", activity_payload)
 
+                # --- Add timeline comments to the deal ---
+                if deal_id:
+                    # Transcript
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                        json={
+                            "fields": {
+                                "ENTITY_ID": deal_id,
+                                "ENTITY_TYPE": "deal",
+                                "COMMENT": f"<b>Transcript</b><br>{transcript}"
+                            }
+                        }
+                    )
+
+                    # Summary
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                        json={
+                            "fields": {
+                                "ENTITY_ID": deal_id,
+                                "ENTITY_TYPE": "deal",
+                                "COMMENT": f"<b>Summary</b><br>{call_summary}"
+                            }
+                        }
+                    )
+
+                    # Recording Attachment
+                    if recording_url:
+                        requests.post(
+                            f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                            json={
+                                "fields": {
+                                    "ENTITY_ID": deal_id,
+                                    "ENTITY_TYPE": "deal",
+                                    "COMMENT": (
+                                        f"<b>Call Recording</b><br>"
+                                        f'<a href="{recording_url}" target="_blank">Click to Listen</a>'
+                                    )
+                                }
+                            }
+                        )
+
+
         return {"status": "success"}
 
     return {"status": status}
