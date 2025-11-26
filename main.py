@@ -86,12 +86,14 @@ def parse_budget_to_number(budget_str: str | None) -> int | None:
 def parse_rm_meeting_time(rm_str: str | None):
     """
     Returns:
-      - start_dt: Bitrix datetime 'YYYY-MM-DDTHH:MM:SS'
+      - start_dt: 'YYYY-MM-DDTHH:MM:SS'
       - date_only: 'YYYY-MM-DD'
-    Supports:
-      - "tomorrow 14:00"
+
+    Supports ALL common formats:
+      - "tomorrow 18:00"
       - "2025-11-27 15:00"
       - "27-11-2025 15:00"
+      - "27/11/2025 20:00"
       - "15:00 27/11/2025"
       - "15:00 27-11-2025"
     """
@@ -102,7 +104,7 @@ def parse_rm_meeting_time(rm_str: str | None):
     ist_zone = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.now(ist_zone)
 
-    # -------- CASE 1: "tomorrow 14:00" --------
+    # -------- 1️⃣ CASE: "tomorrow 18:00" --------
     m = re.search(r"(\d{1,2}):(\d{2})", s)
     if "tomorrow" in s and m:
         hour = int(m.group(1))
@@ -112,15 +114,23 @@ def parse_rm_meeting_time(rm_str: str | None):
         )
         return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
 
-    # -------- CASE 2: "HH:MM DD/MM/YYYY" or "HH:MM DD-MM-YYYY" --------
-    m = re.match(r"(\d{1,2}):(\d{2})\s+(\d{1,2})[/-](\d{1,2})[/-](\d{4})", s)
+    # -------- 2️⃣ CASE: "DD/MM/YYYY HH:MM" or "DD-MM-YYYY HH:MM" --------
+    m = re.match(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(\d{1,2}):(\d{2})$", s)
+    if m:
+        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        hour, minute = int(m.group(4)), int(m.group(5))
+        dt = ist_zone.localize(datetime(yyyy, mm, dd, hour, minute))
+        return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
+
+    # -------- 3️⃣ CASE: "HH:MM DD/MM/YYYY" or "HH:MM DD-MM-YYYY" --------
+    m = re.match(r"(\d{1,2}):(\d{2})\s+(\d{1,2})[/-](\d{1,2})[/-](\d{4})$", s)
     if m:
         hour, minute = int(m.group(1)), int(m.group(2))
         dd, mm, yyyy = int(m.group(3)), int(m.group(4)), int(m.group(5))
-        dt = ist_zone.localize(datetime(yyyy, mm, dd, hour, minute, 0))
+        dt = ist_zone.localize(datetime(yyyy, mm, dd, hour, minute))
         return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
 
-    # -------- CASE 3: "YYYY-MM-DD HH:MM" or "DD-MM-YYYY HH:MM" --------
+    # -------- 4️⃣ CASE: Standard formats --------
     for fmt in ["%Y-%m-%d %H:%M", "%d-%m-%Y %H:%M"]:
         try:
             dt = datetime.strptime(rm_str, fmt)
@@ -409,7 +419,12 @@ async def post_call_webhook(request: Request):
                 start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
 
                 if deal_id and rm_meeting_time_raw:
-                    dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
+                    if not start_time:
+                        print("❌ No valid start_time parsed, skipping activity creation")
+                        start_time = None
+                    else:
+                        dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
+
                     dt_end = dt_start + timedelta(minutes=30)
 
                     activity_fields = {
