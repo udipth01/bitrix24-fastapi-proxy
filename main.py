@@ -378,7 +378,9 @@ async def post_call_webhook(request: Request):
             updated_comments = existing_comments + new_entry
 
             # Base fields for lead update
-            update_fields = {"COMMENTS": updated_comments}
+            update_fields = {"COMMENTS": updated_comments,
+                            "UF_CRM_1586952775435": "Y"   # ⭐ Required for deal creation
+                            }
 
             # If webinar attended YES → mark lead PROCESSED
             if webinar_attended_norm == "yes":
