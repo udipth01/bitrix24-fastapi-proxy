@@ -142,6 +142,23 @@ def parse_rm_meeting_time(rm_str: str | None):
     print("⚠️ Could not parse RM_meeting_time:", rm_str)
     return None, None
 
+def find_deal_for_lead(lead_id):
+    url = f"{BITRIX_WEBHOOK}crm.deal.list.json"
+
+    payload = {
+        "filter": {"LEAD_ID": lead_id},
+        "select": ["ID", "TITLE", "STAGE_ID", "CATEGORY_ID", "OPPORTUNITY"],
+        "order": {"ID": "DESC"}   # get newest deal
+    }
+
+    res = requests.post(url, json=payload)
+    deals = res.json().get("result", [])
+
+    if deals:
+        return deals[0]["ID"]   # newest deal
+
+    return None
+
 
 # ---------- Config ----------
 
@@ -379,7 +396,7 @@ async def post_call_webhook(request: Request):
 
             # Base fields for lead update
             update_fields = {"COMMENTS": updated_comments,
-                            "UF_CRM_1586952775435": "Y"   # ⭐ Required for deal creation
+                            "UF_CRM_1586952775435": "136"   # ⭐ Required for deal creation
                             }
 
             # If webinar attended YES → mark lead PROCESSED
@@ -396,38 +413,12 @@ async def post_call_webhook(request: Request):
 
             # ---------- Deal + Activity creation if Webinar_attended == Yes ----------
             if webinar_attended_norm == "yes":
-                # -------------------------------------------
-                # 1️⃣ Convert Lead → Deal + Contact
-                # -------------------------------------------
+                # Wait for Bitrix automation to create the deal
+                import time
+                time.sleep(2)  # small wait (Bitrix creates deal in 1–2 sec)
 
-                convert_payload = {
-                    "id": lead_id,
-                    "fields": {
-                        "DEAL": {
-                            "TITLE": f"ILTS – {lead_name}",
-                            "OPPORTUNITY": investment_budget_value or 0,
-                            "CATEGORY_ID": 0
-                        },
-                        "CONTACT": "Y",   # auto-create CONTACT
-                        "COMPANY": "N"
-                    },
-                    "params": {
-                        "REGISTER_SONET_EVENT": "Y",
-                        "ENABLE_ACTIVITY": "Y"
-                    }
-                }
-
-                convert_res = requests.post(
-                    f"{BITRIX_WEBHOOK}crm.lead.convert.json",
-                    json=convert_payload
-                )
-
-                print("📤 Lead Convert Response:", convert_res.text)
-
-                # Extract newly created deal ID
-                convert_result = convert_res.json().get("result", {})
-                deal_id = convert_result.get("DEAL_ID")
-
+                # find the auto-created deal
+                deal_id = find_deal_for_lead(lead_id)
 
                 # 2️⃣ Create Activity for RM meeting if we have a time and deal_id
                 start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
