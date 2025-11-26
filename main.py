@@ -394,6 +394,21 @@ async def post_call_webhook(request: Request):
 
             # ---------- Deal + Activity creation if Webinar_attended == Yes ----------
             if webinar_attended_norm == "yes":
+                # GET FULL LEAD DETAILS FOR CONTACT INFO
+                lead_get = requests.get(
+                    f"{BITRIX_WEBHOOK}crm.lead.get.json",
+                    params={"id": lead_id}
+                ).json().get("result", {})
+
+                lead_phone = ""
+                lead_email = ""
+                lead_contact_name = lead_get.get("TITLE") or lead_get.get("NAME") or lead_get.get("LAST_NAME")
+
+                if lead_get.get("PHONE"):
+                    lead_phone = lead_get["PHONE"][0]["VALUE"]
+                if lead_get.get("EMAIL"):
+                    lead_email = lead_get["EMAIL"][0]["VALUE"]
+                    
                 # 1️⃣ Create Deal
                 deal_fields = {
                     "TITLE": f"ILTS – {lead_name or 'Voicebot Lead'}",
@@ -401,6 +416,14 @@ async def post_call_webhook(request: Request):
                     "CATEGORY_ID": 0,  # default pipeline; adjust if you have custom pipeline
                     "STAGE_ID": "NEW",  # default new stage; modify if required
                     "CURRENCY_ID": "INR",
+                    # 🔥 MOST IMPORTANT: Attach contact details to deal
+                    "CONTACT_DATA": [
+                        {
+                            "NAME": lead_contact_name,
+                            "PHONE": [{"VALUE": lead_phone, "VALUE_TYPE": "WORK"}] if lead_phone else [],
+                            "EMAIL": [{"VALUE": lead_email, "VALUE_TYPE": "WORK"}] if lead_email else []
+                        }
+                    ]
                 }
 
                 if investment_budget_value is not None:
