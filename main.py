@@ -64,7 +64,13 @@ def parse_budget_to_number(budget_str: str | None) -> int | None:
         return None
 
     s = budget_str.lower()
+
+    # DIRECT numeric (e.g., "5500000")
+    if s.isdigit():
+        return int(s)
+    
     # Find all integer numbers
+
     nums = re.findall(r"\d+", s)
     if not nums:
         return None
@@ -269,7 +275,12 @@ async def post_call_webhook(request: Request):
     ce = parse_custom_extractions(custom_extractions_raw)
     rm_meeting_time_raw = ce.get("RM_meeting_time")
     webinar_attended = ce.get("Webinar_attended") or ce.get("webinar_attended")
-    investment_budget_raw = ce.get("Investment_Budget") or ce.get("investment_budget")
+    investment_budget_raw = (
+    ce.get("Investment_amount")      # numeric value like "5500000"
+    or ce.get("Investment_Budget") 
+    or ce.get("investment_budget")
+    or ce.get("Investment_Category") # fallback description "over 10 Lakh"
+    )
     webinar_attended_norm = (webinar_attended or "").strip().lower()
 
     # Parse budget to numeric INR
