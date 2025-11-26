@@ -424,7 +424,7 @@ async def post_call_webhook(request: Request):
                         start_time = None
                     else:
                         dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
-
+                    dt_start = dt_start - timedelta(minutes=150)
                     dt_end = dt_start + timedelta(minutes=30)
 
                     activity_fields = {
