@@ -380,9 +380,9 @@ async def post_call_webhook(request: Request):
             # Base fields for lead update
             update_fields = {"COMMENTS": updated_comments}
 
-            # If webinar attended YES → mark lead PROCESSED
+            # If webinar attended YES → mark lead CONVERTED
             if webinar_attended_norm == "yes":
-                update_fields["STATUS_ID"] = "PROCESSED"
+                update_fields["STATUS_ID"] = "CONVERTED"
 
             # Update lead in Bitrix
             lead_update_payload = {"id": lead_id, "fields": update_fields}
@@ -394,49 +394,38 @@ async def post_call_webhook(request: Request):
 
             # ---------- Deal + Activity creation if Webinar_attended == Yes ----------
             if webinar_attended_norm == "yes":
-                # GET FULL LEAD DETAILS FOR CONTACT INFO
-                lead_get = requests.get(
-                    f"{BITRIX_WEBHOOK}crm.lead.get.json",
-                    params={"id": lead_id}
-                ).json().get("result", {})
+                # -------------------------------------------
+                # 1️⃣ Convert Lead → Deal + Contact
+                # -------------------------------------------
 
-                lead_phone = ""
-                lead_email = ""
-                lead_contact_name = lead_get.get("TITLE") or lead_get.get("NAME") or lead_get.get("LAST_NAME")
-
-                if lead_get.get("PHONE"):
-                    lead_phone = lead_get["PHONE"][0]["VALUE"]
-                if lead_get.get("EMAIL"):
-                    lead_email = lead_get["EMAIL"][0]["VALUE"]
-                    
-                # 1️⃣ Create Deal
-                deal_fields = {
-                    "TITLE": f"ILTS – {lead_name or 'Voicebot Lead'}",
-                    "LEAD_ID": lead_id,
-                    "CATEGORY_ID": 0,  # default pipeline; adjust if you have custom pipeline
-                    "STAGE_ID": "NEW",  # default new stage; modify if required
-                    "CURRENCY_ID": "INR",
-                    # 🔥 MOST IMPORTANT: Attach contact details to deal
-                    "CONTACT_DATA": [
-                        {
-                            "NAME": lead_contact_name,
-                            "PHONE": [{"VALUE": lead_phone, "VALUE_TYPE": "WORK"}] if lead_phone else [],
-                            "EMAIL": [{"VALUE": lead_email, "VALUE_TYPE": "WORK"}] if lead_email else []
-                        }
-                    ]
+                convert_payload = {
+                    "id": lead_id,
+                    "fields": {
+                        "DEAL": {
+                            "TITLE": f"ILTS – {lead_name}",
+                            "OPPORTUNITY": investment_budget_value or 0,
+                            "CATEGORY_ID": 0
+                        },
+                        "CONTACT": "Y",   # auto-create CONTACT
+                        "COMPANY": "N"
+                    },
+                    "params": {
+                        "REGISTER_SONET_EVENT": "Y",
+                        "ENABLE_ACTIVITY": "Y"
+                    }
                 }
 
-                if investment_budget_value is not None:
-                    deal_fields["OPPORTUNITY"] = investment_budget_value
-
-                deal_add_payload = {"fields": deal_fields}
-                deal_res = requests.post(
-                    f"{BITRIX_WEBHOOK}crm.deal.add.json", json=deal_add_payload
+                convert_res = requests.post(
+                    f"{BITRIX_WEBHOOK}crm.lead.convert.json",
+                    json=convert_payload
                 )
-                print("📤 Bitrix deal add response:", deal_res.text)
 
-                deal_result = deal_res.json()
-                deal_id = deal_result.get("result")
+                print("📤 Lead Convert Response:", convert_res.text)
+
+                # Extract newly created deal ID
+                convert_result = convert_res.json().get("result", {})
+                deal_id = convert_result.get("DEAL_ID")
+
 
                 # 2️⃣ Create Activity for RM meeting if we have a time and deal_id
                 start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
