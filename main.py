@@ -380,9 +380,9 @@ async def post_call_webhook(request: Request):
             # Base fields for lead update
             update_fields = {"COMMENTS": updated_comments}
 
-            # If webinar attended YES → mark lead CONVERTED
+            # If webinar attended YES → mark lead PROCESSED
             if webinar_attended_norm == "yes":
-                update_fields["STATUS_ID"] = "CONVERTED"
+                update_fields["STATUS_ID"] = "PROCESSED"
 
             # Update lead in Bitrix
             lead_update_payload = {"id": lead_id, "fields": update_fields}
