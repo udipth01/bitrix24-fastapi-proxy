@@ -88,15 +88,21 @@ def parse_rm_meeting_time(rm_str: str | None):
     Returns:
       - start_dt: Bitrix datetime 'YYYY-MM-DDTHH:MM:SS'
       - date_only: 'YYYY-MM-DD'
+    Supports:
+      - "tomorrow 14:00"
+      - "2025-11-27 15:00"
+      - "27-11-2025 15:00"
+      - "15:00 27/11/2025"
+      - "15:00 27-11-2025"
     """
     if not rm_str:
         return None, None
 
-    s = rm_str.lower()
+    s = rm_str.lower().strip()
     ist_zone = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.now(ist_zone)
 
-    # Case: "tomorrow 14:00"
+    # -------- CASE 1: "tomorrow 14:00" --------
     m = re.search(r"(\d{1,2}):(\d{2})", s)
     if "tomorrow" in s and m:
         hour = int(m.group(1))
@@ -106,18 +112,25 @@ def parse_rm_meeting_time(rm_str: str | None):
         )
         return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
 
-    # Case: explicit date formats
+    # -------- CASE 2: "HH:MM DD/MM/YYYY" or "HH:MM DD-MM-YYYY" --------
+    m = re.match(r"(\d{1,2}):(\d{2})\s+(\d{1,2})[/-](\d{1,2})[/-](\d{4})", s)
+    if m:
+        hour, minute = int(m.group(1)), int(m.group(2))
+        dd, mm, yyyy = int(m.group(3)), int(m.group(4)), int(m.group(5))
+        dt = ist_zone.localize(datetime(yyyy, mm, dd, hour, minute, 0))
+        return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
+
+    # -------- CASE 3: "YYYY-MM-DD HH:MM" or "DD-MM-YYYY HH:MM" --------
     for fmt in ["%Y-%m-%d %H:%M", "%d-%m-%Y %H:%M"]:
         try:
             dt = datetime.strptime(rm_str, fmt)
             dt = ist_zone.localize(dt)
             return dt.strftime("%Y-%m-%dT%H:%M:%S"), dt.strftime("%Y-%m-%d")
         except:
-            continue
+            pass
 
     print("⚠️ Could not parse RM_meeting_time:", rm_str)
     return None, None
-
 
 
 # ---------- Config ----------
