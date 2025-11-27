@@ -53,40 +53,62 @@ def parse_custom_extractions(raw):
 
 def parse_budget_to_number(budget_str: str | None) -> int | None:
     """
-    Convert things like:
-      - "over 10 Lakh"
-      - "10-20 Lakh"
-      - "more than 50 Lakh"
-    into an integer amount in INR.
-    Rule: If a range is given, take the MAX value.
+    Parse all Indian-style budget inputs:
+    - "60,00,000"
+    - "₹60,00,000"
+    - "60 lakh", "60 lakhs", "60 lac"
+    - "over 10 Lakh"
+    - "10-20 Lakh" (→ take max = 20 lakh)
+    - "1.5 crore"
+    - "sixty lakh" (convert words to numbers)
     """
+
     if not budget_str:
         return None
 
-    s = budget_str.lower()
+    s = budget_str.lower().strip()
 
-    # DIRECT numeric (e.g., "5500000")
+    # Remove ₹, rs, whitespace
+    s = re.sub(r"[₹, ]", "", s)
+    s = s.replace("rs", "").replace("rs.", "").strip()
+
+    # If pure digit now → direct
     if s.isdigit():
         return int(s)
-    
-    # Find all integer numbers
 
-    nums = re.findall(r"\d+", s)
-    if not nums:
-        return None
+    # Restore original with commas for unit detection
+    orig = budget_str.lower()
 
-    # Take max value if multiple
-    n = max(int(x) for x in nums)
+    # Extract digits (handles "10-20 lakh")
+    nums = re.findall(r"\d+(?:\.\d+)?", orig)
+    if nums:
+        # choose maximum number if ranges
+        val = float(max(nums))
+    else:
+        # WORD BASED numbers (simple mapping)
+        word_map = {
+            "ten": 10, "twenty": 20, "thirty": 30, "forty": 40,
+            "fifty": 50, "sixty": 60, "seventy": 70,
+            "eighty": 80, "ninety": 90, "hundred": 100
+        }
+        words = orig.split()
+        vals = [word_map[w] for w in words if w in word_map]
+        if vals:
+            val = max(vals)
+        else:
+            return None
 
-    # Detect unit
-    if "crore" in s or "cr" in s:
+    # Detect lakh / crore
+    if "crore" in orig or "cr" in orig:
         multiplier = 10_000_000
-    elif "lakh" in s or "lac" in s:
+    elif "lakh" in orig or "lac" in orig:
         multiplier = 100_000
     else:
-        multiplier = 1
+        # If we see a number like 6000000 (7 digits → lakhs) but no word,
+        # assume it is final amount
+        return int(val)
 
-    return n * multiplier
+    return int(val * multiplier)
 
 
 def parse_rm_meeting_time(rm_str: str | None):
@@ -499,6 +521,19 @@ async def post_call_webhook(request: Request):
                             }
                         }
                     )
+
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.deal.update.json",
+                        json={
+                            "id": deal_id,
+                            "fields": {
+                                "OPPORTUNITY": investment_budget_value,
+                                "CURRENCY_ID": "INR",
+                                "IS_MANUAL_OPPORTUNITY": "Y"
+                            }
+                        }
+                    )
+
 
                     # Recording Attachment
                     if recording_url:
