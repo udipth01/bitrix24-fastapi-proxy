@@ -170,6 +170,7 @@ def parse_rm_meeting_time(rm_str: str | None):
     print("⚠️ Could not parse RM_meeting_time:", rm_str)
     return None, None
 
+
 def find_deal_for_lead(lead_id):
     url = f"{BITRIX_WEBHOOK}crm.deal.list.json"
 
@@ -221,7 +222,11 @@ async def bolna_proxy(request: Request):
     lead_url = f"{BITRIX_WEBHOOK}crm.lead.get.json"
     response = requests.get(lead_url, params={"id": lead_id})
     if response.status_code != 200:
-        return {"status": "error", "reason": "Bitrix fetch failed", "bitrix_response": response.text}
+        return {
+            "status": "error",
+            "reason": "Bitrix fetch failed",
+            "bitrix_response": response.text,
+        }
 
     lead_data = response.json().get("result", {})
     phone = None
@@ -243,7 +248,10 @@ async def bolna_proxy(request: Request):
         print("❌ Supabase insert error:", str(e))
 
     if "swciad_" not in lead_name.lower() and "udipth" not in lead_name.lower():
-        return {"status": "skipped", "reason": "Lead name does not contain 'SWCIAD_' or 'udipth'"}
+        return {
+            "status": "skipped",
+            "reason": "Lead name does not contain 'SWCIAD_' or 'udipth'",
+        }
 
     # Select agent based on lead_name
     if "udipth" in lead_name.lower():
@@ -265,7 +273,11 @@ async def bolna_proxy(request: Request):
             "Authorization": f"Bearer {BOLNA_TOKEN}",
             "Content-Type": "application/json"
         }
-        bolna_response = requests.post("https://api.bolna.ai/call", json=bolna_payload, headers=headers)
+        bolna_response = requests.post(
+            "https://api.bolna.ai/call",
+            json=bolna_payload,
+            headers=headers
+        )
         print("📞 Bolna.ai response:", bolna_response.text)
         return {"status": "forwarded", "bolna_response": bolna_response.text}
 
@@ -298,10 +310,10 @@ async def post_call_webhook(request: Request):
     rm_meeting_time_raw = ce.get("RM_meeting_time")
     webinar_attended = ce.get("Webinar_attended") or ce.get("webinar_attended")
     investment_budget_raw = (
-    ce.get("Investment_amount")      # numeric value like "5500000"
-    or ce.get("Investment_Budget") 
-    or ce.get("investment_budget")
-    or ce.get("Investment_Category") # fallback description "over 10 Lakh"
+        ce.get("Investment_amount")      # numeric value like "5500000"
+        or ce.get("Investment_Budget")
+        or ce.get("investment_budget")
+        or ce.get("Investment_Category")  # fallback description "over 10 Lakh"
     )
     webinar_attended_norm = (webinar_attended or "").strip().lower()
 
@@ -396,7 +408,7 @@ async def post_call_webhook(request: Request):
         except Exception as e:
             print("❌ Supabase insert error:", str(e))
 
-        # ✅ Update Bitrix comments log
+        # ✅ Update Bitrix comments log on LEAD
         if lead_id:
             get_res = requests.get(
                 f"{BITRIX_WEBHOOK}crm.lead.get.json",
@@ -428,91 +440,40 @@ async def post_call_webhook(request: Request):
             updated_comments = existing_comments + new_entry
 
             # Base fields for lead update
-            update_fields = {"COMMENTS": updated_comments,
-                            "UF_CRM_1586952775435": "136"   # ⭐ Required for deal creation
-                            }
-            
-            # ---------- Webinar NOT attended ----------
-            if webinar_attended_norm == "no":
-                print("⚙️ Webinar NOT attended → set flag=N then move to Unanswered (14)")
+            update_fields = {
+                "COMMENTS": updated_comments,
+                "UF_CRM_1586952775435": "136"   # ⭐ Required for deal creation
+            }
 
-                # 1️⃣ set the custom flag first
-                update_fields["UF_CRM_1764239159240"] = "N"
+            # ------------------------------------------------------------
+            #              FINAL FLOW BASED ON webinar_attended_norm
+            # ------------------------------------------------------------
 
-                # 2️⃣ then move the lead to Unanswered (14)
-                update_fields["STATUS_ID"] = "14"
-
-            # If webinar attended YES → mark lead PROCESSED
+            # ---------- CASE 1: Webinar attended → YES ----------
             if webinar_attended_norm == "yes":
-                    # set attended flag
+                print("🎉 Webinar attended = YES → Create deal + RM meeting + comments")
+
+                # Mark attended
                 update_fields["UF_CRM_1764239159240"] = "Y"
-                
                 update_fields["STATUS_ID"] = "PROCESSED"
 
-            # Update lead in Bitrix
-            lead_update_payload = {"id": lead_id, "fields": update_fields}
-            lead_update_res = requests.post(
-                f"{BITRIX_WEBHOOK}crm.lead.update.json", json=lead_update_payload
-            )
-            print("📤 Bitrix lead update response:", lead_update_res.text)
-            print("📤 Bitrix lead payload:", lead_update_payload)
+                # Update lead FIRST
+                lead_update_payload = {"id": lead_id, "fields": update_fields}
+                requests.post(
+                    f"{BITRIX_WEBHOOK}crm.lead.update.json",
+                    json=lead_update_payload
+                )
 
-            
-
-            # ---------- Deal + Activity creation if Webinar_attended == Yes ----------
-            if webinar_attended_norm == "yes":
-                # Wait for Bitrix automation to create the deal
+                # Allow Bitrix automation to create deal (1–2 sec)
                 import time
-                time.sleep(2)  # small wait (Bitrix creates deal in 1–2 sec)
+                time.sleep(2)
 
-                # find the auto-created deal
+                # Find deal created by automation
                 deal_id = find_deal_for_lead(lead_id)
 
-                # 2️⃣ Create Activity for RM meeting if we have a time and deal_id
-                start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
-
-                if deal_id and rm_meeting_time_raw:
-                    if not start_time:
-                        print("❌ No valid start_time parsed, skipping activity creation")
-                        start_time = None
-                    else:
-                        dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
-                    dt_start = dt_start - timedelta(minutes=150)
-                    dt_end = dt_start + timedelta(minutes=30)
-
-                    activity_fields = {
-                        "OWNER_TYPE_ID": 2,
-                        "OWNER_ID": deal_id,
-                        "TYPE_ID": 2,
-                        "SUBJECT": "Scheduled RM Call – Auto-created from Voicebot",
-                        "START_TIME": dt_start.strftime("%Y-%m-%dT%H:%M:%S"),
-                        "END_TIME": dt_end.strftime("%Y-%m-%dT%H:%M:%S"),
-                        "DESCRIPTION": (
-                            f"RM Meeting scheduled by voicebot.\n"
-                            f"RM_meeting_time_raw: {rm_meeting_time_raw}\n"
-                            f"Parsed date: {date_only}\n"
-                            f"Investment Budget: {investment_budget_raw}\n"
-                        ),
-                        "DIRECTION": 2,
-                        "COMMUNICATIONS": [
-                            {
-                                "VALUE": recipient_phone or to_number,
-                                "ENTITY_TYPE_ID": 2,
-                                "ENTITY_ID": deal_id,
-                            }
-                        ],
-                    }
-
-                    activity_payload = {"fields": activity_fields}
-                    act_res = requests.post(
-                        f"{BITRIX_WEBHOOK}crm.activity.add.json",
-                        json=activity_payload
-                    )
-                    print("📤 Activity response:", act_res.text)
-                    print("📤 Bitrix activity payload:", activity_payload)
-
-                # --- Add timeline comments to the deal ---
+                # ---------- Add timeline comments inside the deal ----------
                 if deal_id:
+
                     # Transcript
                     requests.post(
                         f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
@@ -537,20 +498,7 @@ async def post_call_webhook(request: Request):
                         }
                     )
 
-                    requests.post(
-                        f"{BITRIX_WEBHOOK}crm.deal.update.json",
-                        json={
-                            "id": deal_id,
-                            "fields": {
-                                "OPPORTUNITY": investment_budget_value,
-                                "CURRENCY_ID": "INR",
-                                "IS_MANUAL_OPPORTUNITY": "Y"
-                            }
-                        }
-                    )
-
-
-                    # Recording Attachment
+                    # Call recording link
                     if recording_url:
                         requests.post(
                             f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
@@ -566,6 +514,120 @@ async def post_call_webhook(request: Request):
                             }
                         )
 
+                    # ---------- Update Deal Opportunity ----------
+                    if investment_budget_value:
+                        requests.post(
+                            f"{BITRIX_WEBHOOK}crm.deal.update.json",
+                            json={
+                                "id": deal_id,
+                                "fields": {
+                                    "OPPORTUNITY": investment_budget_value,
+                                    "CURRENCY_ID": "INR",
+                                    "IS_MANUAL_OPPORTUNITY": "Y"
+                                }
+                            }
+                        )
+
+                    # ---------- Create RM Meeting Activity ----------
+                    start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
+
+                    if start_time:
+                        dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
+                        dt_start = dt_start - timedelta(minutes=150)
+                        dt_end = dt_start + timedelta(minutes=30)
+
+                        act = {
+                            "fields": {
+                                "OWNER_TYPE_ID": 2,  # deal
+                                "OWNER_ID": deal_id,
+                                "TYPE_ID": 2,
+                                "SUBJECT": "Scheduled RM Call – Auto-created from Voicebot",
+                                "START_TIME": dt_start.strftime("%Y-%m-%dT%H:%M:%S"),
+                                "END_TIME": dt_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                                "DESCRIPTION": (
+                                    f"RM Meeting scheduled from call.\n"
+                                    f"RM_meeting_time_raw: {rm_meeting_time_raw}\n"
+                                    f"Parsed date: {date_only}\n"
+                                    f"Investment Budget: {investment_budget_raw}\n"
+                                ),
+                                "DIRECTION": 2,
+                                "COMMUNICATIONS": [
+                                    {
+                                        "VALUE": recipient_phone or to_number,
+                                        "ENTITY_TYPE_ID": 2,
+                                        "ENTITY_ID": deal_id,
+                                    }
+                                ],
+                            }
+                        }
+
+                        requests.post(
+                            f"{BITRIX_WEBHOOK}crm.activity.add.json",
+                            json=act
+                        )
+
+                return {"status": "success", "flow": "deal_created"}
+
+            # ------------------------------------------------------------
+            #         CASE 2: Webinar attended != YES → update LEAD only
+            # ------------------------------------------------------------
+            print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
+
+            update_fields["UF_CRM_1764239159240"] = "N"
+            update_fields["STATUS_ID"] = "14"   # Move to Unanswered to trigger automation
+
+            # ---------- Put Opportunity inside LEAD (NOT DEAL) ----------
+            if investment_budget_value:
+                update_fields["OPPORTUNITY"] = investment_budget_value
+                update_fields["CURRENCY_ID"] = "INR"
+
+            # ---------- Create RM Meeting Activity directly under LEAD ----------
+            start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
+
+            if start_time:
+                dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
+                dt_start = dt_start - timedelta(minutes=150)
+                dt_end = dt_start + timedelta(minutes=30)
+
+                lead_activity = {
+                    "fields": {
+                        "OWNER_TYPE_ID": 1,  # Lead
+                        "OWNER_ID": lead_id,
+                        "TYPE_ID": 2,
+                        "SUBJECT": "Scheduled RM Call – Auto-created from Voicebot",
+                        "START_TIME": dt_start.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "END_TIME": dt_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "DESCRIPTION": (
+                            f"RM Meeting scheduled from call.\n"
+                            f"RM_meeting_time_raw: {rm_meeting_time_raw}\n"
+                            f"Parsed date: {date_only}\n"
+                            f"Investment Budget: {investment_budget_raw}\n"
+                        ),
+                        "DIRECTION": 2,
+                        "COMMUNICATIONS": [
+                            {
+                                "VALUE": recipient_phone or to_number,
+                                "ENTITY_TYPE_ID": 1,
+                                "ENTITY_ID": lead_id,
+                            }
+                        ],
+                    }
+                }
+
+                requests.post(
+                    f"{BITRIX_WEBHOOK}crm.activity.add.json",
+                    json=lead_activity
+                )
+
+            # ---------- Update LEAD ----------
+            lead_update_payload = {"id": lead_id, "fields": update_fields}
+
+            requests.post(
+                f"{BITRIX_WEBHOOK}crm.lead.update.json",
+                json=lead_update_payload
+            )
+
+            return {"status": "success", "flow": "lead_updated_only"}
 
         return {"status": "success"}
 
