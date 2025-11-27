@@ -451,7 +451,9 @@ async def post_call_webhook(request: Request):
                             "OWNER_ID": lead_id,
                             "TYPE_ID": 4,
                             "SUBJECT": "Webinar Details – Please Watch Before Next Step",
-                            "DESCRIPTION": "Triggered by Voicebot: Client has NOT watched webinar.",
+                            # THESE TWO ARE REQUIRED FOR TEMPLATE TO EXECUTE
+                            "DESCRIPTION": "",
+                            "DESCRIPTION_TYPE": "B",
                             "COMMUNICATIONS": [
                                 {
                                     "VALUE": email,
