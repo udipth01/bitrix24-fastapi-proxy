@@ -437,7 +437,7 @@ async def post_call_webhook(request: Request):
                 print("✉️ Webinar NOT attended → sending Email & WhatsApp")
 
                 # Mark field for automation
-                update_fields["UF_CRM_1764239159240"] = "Y"
+                update_fields["UF_CRM_1764239159240"] = "N"
 
                 # SEND EMAIL
                 email = None
@@ -461,7 +461,7 @@ async def post_call_webhook(request: Request):
                             ],
                             "PROVIDER_ID": "crm",
                             "PROVIDER_TYPE_ID": "email",
-                            "TEMPLATE_ID": "Mail when webinar not seen"
+                            "TEMPLATE_ID": 1090
                         }
                     }
 
