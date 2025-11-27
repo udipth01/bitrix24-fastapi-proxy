@@ -434,50 +434,19 @@ async def post_call_webhook(request: Request):
             
             # ---------- Webinar NOT attended ----------
             if webinar_attended_norm == "no":
-                print("✉️ Webinar NOT attended → sending Email & WhatsApp")
+                print("⚙️ Webinar NOT attended → set flag=N then move to Unanswered (14)")
 
-                # Mark field for automation
+                # 1️⃣ set the custom flag first
                 update_fields["UF_CRM_1764239159240"] = "N"
 
-                # SEND EMAIL
-                email = None
-                if lead_data.get("EMAIL"):
-                    email = lead_data["EMAIL"][0].get("VALUE")
-
-                if email:
-                    email_activity = {
-                        "fields": {
-                            "OWNER_TYPE_ID": 1,
-                            "OWNER_ID": lead_id,
-                            "TYPE_ID": 4,
-                            "SUBJECT": "Webinar Details – Please Watch Before Next Step",
-                            # THESE TWO ARE REQUIRED FOR TEMPLATE TO EXECUTE
-                            "DESCRIPTION": "",
-                            "DESCRIPTION_TYPE": "B",
-                            "COMMUNICATIONS": [
-                                {
-                                    "VALUE": email,
-                                    "ENTITY_ID": lead_id,
-                                    "ENTITY_TYPE_ID": 1
-                                }
-                            ],
-                            "PROVIDER_ID": "crm",
-                            "PROVIDER_TYPE_ID": "email",
-                            "TEMPLATE_ID": 1090
-                        }
-                    }
-
-                    email_res = requests.post(
-                        f"{BITRIX_WEBHOOK}crm.activity.add.json",
-                        json=email_activity
-                    )
-                    print("📧 Email Template Response:", email_res.text)
-
-                # DO NOT SEND WHATSAPP HERE via API (it won't work)
-                # → Trigger WhatsApp template through Bitrix automation rule
+                # 2️⃣ then move the lead to Unanswered (14)
+                update_fields["STATUS_ID"] = "14"
 
             # If webinar attended YES → mark lead PROCESSED
             if webinar_attended_norm == "yes":
+                    # set attended flag
+                update_fields["UF_CRM_1764239159240"] = "Y"
+                
                 update_fields["STATUS_ID"] = "PROCESSED"
 
             # Update lead in Bitrix
