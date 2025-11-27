@@ -444,6 +444,65 @@ async def post_call_webhook(request: Request):
             print("📤 Bitrix lead update response:", lead_update_res.text)
             print("📤 Bitrix lead payload:", lead_update_payload)
 
+            # ---------- If Webinar NOT attended → Send Email + WhatsApp ----------
+            if webinar_attended_norm == "No":
+                print("✉️ Webinar NOT attended → sending Email + WhatsApp")
+
+                # ---------------------------------------
+                # 1️⃣ SEND EMAIL TEMPLATE (Bitrix CRM Email Activity)
+                # ---------------------------------------
+
+                # Fetch lead email
+                email = None
+                if lead_data.get("EMAIL"):
+                    email = lead_data["EMAIL"][0].get("VALUE")
+
+                if email:
+                    email_activity = {
+                        "fields": {
+                            "OWNER_TYPE_ID": 1,          # 1 = Lead
+                            "OWNER_ID": lead_id,
+                            "TYPE_ID": 4,                # Email
+                            "SUBJECT": "Webinar Details – Please Watch Before Next Step",
+                            "DESCRIPTION": "Triggered by Voicebot: Client has NOT watched webinar.",
+                            "COMMUNICATIONS": [
+                                {
+                                    "VALUE": email,
+                                    "ENTITY_ID": lead_id,
+                                    "ENTITY_TYPE_ID": 1
+                                }
+                            ],
+                            "PROVIDER_ID": "crm",
+                            "PROVIDER_TYPE_ID": "email",
+                            "TEMPLATE_ID": "Mail when webinar not seen"
+                        }
+                    }
+
+                    email_res = requests.post(
+                        f"{BITRIX_WEBHOOK}crm.activity.add.json",
+                        json=email_activity
+                    )
+                    print("📧 Email Template Response:", email_res.text)
+
+                # ---------------------------------------
+                # 2️⃣ SEND WHATSAPP TEMPLATE (Openline Message API)
+                # ---------------------------------------
+
+                whatsapp_payload = {
+                    "CONNECTOR": "whatsapp",       # your channel connector
+                    "TEMPLATE": "kyc_completion_marketing",
+                    "PHONE": recipient_phone or to_number,
+                    "LEAD_ID": lead_id,
+                    "PLACEHOLDER_VALUES": {}       # add if template expects placeholders
+                }
+
+                wa_res = requests.post(
+                    f"{BITRIX_WEBHOOK}imconnector.send.messages",
+                    json=whatsapp_payload
+                )
+                print("📲 WhatsApp Template Response:", wa_res.text)
+
+
             # ---------- Deal + Activity creation if Webinar_attended == Yes ----------
             if webinar_attended_norm == "yes":
                 # Wait for Bitrix automation to create the deal
