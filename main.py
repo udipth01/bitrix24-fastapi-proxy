@@ -431,28 +431,15 @@ async def post_call_webhook(request: Request):
             update_fields = {"COMMENTS": updated_comments,
                             "UF_CRM_1586952775435": "136"   # ⭐ Required for deal creation
                             }
+            
+            # ---------- Webinar NOT attended ----------
+            if webinar_attended_norm == "no":
+                print("✉️ Webinar NOT attended → sending Email & WhatsApp")
 
-            # If webinar attended YES → mark lead PROCESSED
-            if webinar_attended_norm == "yes":
-                update_fields["STATUS_ID"] = "PROCESSED"
+                # Mark field for automation
+                update_fields["UF_CRM_1764239159240"] = "Y"
 
-            # Update lead in Bitrix
-            lead_update_payload = {"id": lead_id, "fields": update_fields}
-            lead_update_res = requests.post(
-                f"{BITRIX_WEBHOOK}crm.lead.update.json", json=lead_update_payload
-            )
-            print("📤 Bitrix lead update response:", lead_update_res.text)
-            print("📤 Bitrix lead payload:", lead_update_payload)
-
-            # ---------- If Webinar NOT attended → Send Email + WhatsApp ----------
-            if webinar_attended_norm == "No":
-                print("✉️ Webinar NOT attended → sending Email + WhatsApp")
-
-                # ---------------------------------------
-                # 1️⃣ SEND EMAIL TEMPLATE (Bitrix CRM Email Activity)
-                # ---------------------------------------
-
-                # Fetch lead email
+                # SEND EMAIL
                 email = None
                 if lead_data.get("EMAIL"):
                     email = lead_data["EMAIL"][0].get("VALUE")
@@ -460,9 +447,9 @@ async def post_call_webhook(request: Request):
                 if email:
                     email_activity = {
                         "fields": {
-                            "OWNER_TYPE_ID": 1,          # 1 = Lead
+                            "OWNER_TYPE_ID": 1,
                             "OWNER_ID": lead_id,
-                            "TYPE_ID": 4,                # Email
+                            "TYPE_ID": 4,
                             "SUBJECT": "Webinar Details – Please Watch Before Next Step",
                             "DESCRIPTION": "Triggered by Voicebot: Client has NOT watched webinar.",
                             "COMMUNICATIONS": [
@@ -484,24 +471,22 @@ async def post_call_webhook(request: Request):
                     )
                     print("📧 Email Template Response:", email_res.text)
 
-                # ---------------------------------------
-                # 2️⃣ SEND WHATSAPP TEMPLATE (Openline Message API)
-                # ---------------------------------------
+                # DO NOT SEND WHATSAPP HERE via API (it won't work)
+                # → Trigger WhatsApp template through Bitrix automation rule
 
-                whatsapp_payload = {
-                    "CONNECTOR": "whatsapp",       # your channel connector
-                    "TEMPLATE": "kyc_completion_marketing",
-                    "PHONE": recipient_phone or to_number,
-                    "LEAD_ID": lead_id,
-                    "PLACEHOLDER_VALUES": {}       # add if template expects placeholders
-                }
+            # If webinar attended YES → mark lead PROCESSED
+            if webinar_attended_norm == "yes":
+                update_fields["STATUS_ID"] = "PROCESSED"
 
-                wa_res = requests.post(
-                    f"{BITRIX_WEBHOOK}imconnector.send.messages",
-                    json=whatsapp_payload
-                )
-                print("📲 WhatsApp Template Response:", wa_res.text)
+            # Update lead in Bitrix
+            lead_update_payload = {"id": lead_id, "fields": update_fields}
+            lead_update_res = requests.post(
+                f"{BITRIX_WEBHOOK}crm.lead.update.json", json=lead_update_payload
+            )
+            print("📤 Bitrix lead update response:", lead_update_res.text)
+            print("📤 Bitrix lead payload:", lead_update_payload)
 
+            
 
             # ---------- Deal + Activity creation if Webinar_attended == Yes ----------
             if webinar_attended_norm == "yes":
