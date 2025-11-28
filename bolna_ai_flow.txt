@@ -1,0 +1,17 @@
+Bolna.ai POST webhook
+        │
+        ▼
+FastAPI /post-call-webhook
+        │  Extract fields
+        ▼
+Supabase insert()
+        │
+        ▼
+Bitrix lead.get()
+        │
+        ▼
+Update lead (comments, status)
+        │
+        ├─ If YES: Find deal → deal.update → activity.add → timeline
+        │
+        └─ If NO:   activity.add (on lead) → lead.update opportunity

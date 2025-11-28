@@ -1,0 +1,34 @@
+                            +---------------------+
+                            |  Voicebot Call Ends |
+                            +----------+----------+
+                                       |
+                                       ▼
+                           /post-call-webhook (FastAPI)
+                                       |
+                                Extract fields
+                                       |
+                 +---------------------+---------------------+
+                 |                                           |
+                 |                                           |
+          Webinar_attended == YES                   Webinar_attended == NO
+                 |                                           |
+                 ▼                                           ▼
+       +----------------------+                   +---------------------------+
+       | Update lead: Y       |                   | Update lead: N            |
+       | STATUS = PROCESSED   |                   | STATUS = 14               |
+       +----------+-----------+                   +-------------+-------------+
+                  |                                             |
+                  ▼                                             ▼
+      Bitrix Automation creates Deal                   Does budget or
+                  |                                    meeting exist?
+                  ▼                                             |
+       +-----------------------+                         +------+------+
+       | Find deal via API    |                         |             |
+       +----------+------------+                      YES             NO
+                  |                                      |             |
+                  ▼                                      ▼             ▼
+       +-----------------------+               +----------------+  +-----------------+
+       | Add Deal Activity     |               | Activity on    |  | No Activity     |
+       | Add comments/timeline |               | Lead           |  | Only Lead       |
+       | Update OPPORTUNITY    |               | Add OPPORTUNITY|  | Update          |
+       +-----------------------+               +----------------+  +-----------------+
