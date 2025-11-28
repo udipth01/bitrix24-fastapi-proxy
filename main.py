@@ -450,7 +450,7 @@ async def post_call_webhook(request: Request):
             # ------------------------------------------------------------
 
             # ---------- CASE 1: Webinar attended → YES ----------
-            if webinar_attended_norm == "yes":
+            if webinar_attended_norm == "yes" and investment_budget_value >=1000000:
                 print("🎉 Webinar attended = YES → Create deal + RM meeting + comments")
 
                 # Mark attended
@@ -574,7 +574,10 @@ async def post_call_webhook(request: Request):
             print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
 
             update_fields["UF_CRM_1764323136141"] = "Y"
-            update_fields["STATUS_ID"] = "14"   # Move to Unanswered to trigger automation
+            if investment_budget_value<1000000:
+                update_fields["STATUS_ID"] = "JUNK"   # Move to Junk
+            else:
+                update_fields["STATUS_ID"] = "14"   # Move to Unanswered to trigger automation
 
             # ---------- Put Opportunity inside LEAD (NOT DEAL) ----------
             if investment_budget_value:
