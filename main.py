@@ -574,7 +574,7 @@ async def post_call_webhook(request: Request):
             print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
 
             update_fields["UF_CRM_1764323136141"] = "Y"
-            if investment_budget_value<1000000:
+            if investment_budget_value is None or investment_budget_value < 1000000:
                 update_fields["STATUS_ID"] = "JUNK"   # Move to Junk
             else:
                 update_fields["STATUS_ID"] = "14"   # Move to Unanswered to trigger automation
