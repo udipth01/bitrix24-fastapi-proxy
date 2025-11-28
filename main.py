@@ -573,7 +573,7 @@ async def post_call_webhook(request: Request):
             # ------------------------------------------------------------
             print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
 
-            update_fields["UF_CRM_1764239159240"] = "N"
+            update_fields["UF_CRM_1764323136141"] = "Y"
             update_fields["STATUS_ID"] = "14"   # Move to Unanswered to trigger automation
 
             # ---------- Put Opportunity inside LEAD (NOT DEAL) ----------
