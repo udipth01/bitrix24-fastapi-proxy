@@ -250,7 +250,7 @@ async def bolna_proxy(request: Request):
 
     lead_first_name = lead_data.get("NAME")
 
-    if "swciad_" not in lead_name.lower() and "udipth" not in lead_name.lower() and "udipth" not in lead_first_name.lower():
+    if "swciad_" not in lead_name.lower() and "udipth" not in lead_name.lower() and "udipth" not in lead_first_name.lower() and "ilts_" not in lead_name.lower():
         return {
             "status": "skipped",
             "reason": "Lead name does not contain 'SWCIAD_' or 'udipth'",
@@ -260,7 +260,7 @@ async def bolna_proxy(request: Request):
     if "udipth" in lead_name.lower() or "udipth" in lead_first_name.lower():
         agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
     else:
-        agent_id = "950c36e8-92ed-4a21-9764-03267e2f6039"
+        agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
 
     if phone:
         bolna_payload = {
