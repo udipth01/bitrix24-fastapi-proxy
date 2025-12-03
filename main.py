@@ -576,6 +576,11 @@ async def post_call_webhook(request: Request):
             # ------------------------------------------------------------
             print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
 
+            # Prevent overwrite if already processed
+            if update_fields.get("STATUS_ID") == "PROCESSED":
+                return {"status": "success", "flow": "deal_created_no_overwrite"}
+
+
             update_fields["UF_CRM_1764323136141"] = "Y"
             if investment_budget_value is not None and 0 < investment_budget_value < 1000000:
                 update_fields["STATUS_ID"] = "JUNK"   # Move to Junk
