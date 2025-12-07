@@ -462,10 +462,17 @@ async def post_call_webhook(request: Request):
 
                 # Update lead FIRST
                 lead_update_payload = {"id": lead_id, "fields": update_fields}
-                requests.post(
+                print("📤 Sending lead update to Bitrix:", lead_update_payload)
+
+                resp = requests.post(
                     f"{BITRIX_WEBHOOK}crm.lead.update.json",
                     json=lead_update_payload
                 )
+
+
+                print("🔴 Bitrix lead.update response:", resp.text)
+
+
 
                 # Allow Bitrix automation to create deal (1–2 sec)
                 import time
