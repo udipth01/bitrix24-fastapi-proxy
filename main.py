@@ -458,7 +458,7 @@ async def post_call_webhook(request: Request):
 
                 # Mark attended
                 update_fields["UF_CRM_1764239159240"] = "Y"
-                update_fields["STATUS_ID"] = "CONVERTED"
+                update_fields["STATUS_ID"] = "PROCESSED"
 
                 # Update lead FIRST
                 lead_update_payload = {"id": lead_id, "fields": update_fields}
@@ -478,8 +478,36 @@ async def post_call_webhook(request: Request):
                 import time
                 time.sleep(2)
 
-                # Find deal created by automation
-                deal_id = find_deal_for_lead(lead_id)
+                # ---- 2️⃣ Create Deal Automatically (API-Based) ----
+                deal_payload = {
+                    "fields": {
+                        "TITLE": f"ILTS Deal - {lead_name}",
+                        "LEAD_ID": lead_id,
+                        "OPPORTUNITY": investment_budget_value,
+                        "CURRENCY_ID": "INR",
+                        "CATEGORY_ID": 0,         # <-- default pipeline (change if required)
+                        "STAGE_ID": "NEW",        # <-- first stage of Deals pipeline
+                        "UF_CRM_1586952775435": "136"   # same mandatory field for RA compliance
+                    }
+                }
+
+                print("📤 Creating deal via Bitrix:", deal_payload)
+
+                deal_res = requests.post(
+                    f"{BITRIX_WEBHOOK}crm.deal.add.json",
+                    json=deal_payload
+                )
+
+                print("🔵 Deal creation response:", deal_res.text)
+
+                deal_id = deal_res.json().get("result")
+
+                if not deal_id:
+                    print("❌ Deal creation failed — stopping RM meeting creation!")
+                    return {"status": "error", "reason": "deal_creation_failed"}
+
+                # # Find deal created by automation
+                # deal_id = find_deal_for_lead(lead_id)
 
                 # ---------- Add timeline comments inside the deal ----------
                 if deal_id:
@@ -584,7 +612,7 @@ async def post_call_webhook(request: Request):
             print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
 
             # Prevent overwrite if already processed
-            if update_fields.get("STATUS_ID") == "CONVERTED":
+            if update_fields.get("STATUS_ID") == "PROCESSED":
                 return {"status": "success", "flow": "deal_created_no_overwrite"}
 
 
