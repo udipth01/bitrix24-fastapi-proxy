@@ -458,7 +458,7 @@ async def post_call_webhook(request: Request):
 
                 # Mark attended
                 update_fields["UF_CRM_1764239159240"] = "Y"
-                update_fields["STATUS_ID"] = "PROCESSED"
+                update_fields["STATUS_ID"] = "CONVERTED"
 
                 # Update lead FIRST
                 lead_update_payload = {"id": lead_id, "fields": update_fields}
@@ -584,7 +584,7 @@ async def post_call_webhook(request: Request):
             print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
 
             # Prevent overwrite if already processed
-            if update_fields.get("STATUS_ID") == "PROCESSED":
+            if update_fields.get("STATUS_ID") == "CONVERTED":
                 return {"status": "success", "flow": "deal_created_no_overwrite"}
 
 
