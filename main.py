@@ -451,6 +451,104 @@ async def post_call_webhook(request: Request):
             # Find deal created by automation
             deal_id = find_deal_for_lead(lead_id)
             print("Deal_id:", deal_id)
+
+            # ------------------------------------------------------------
+            # CASE A: DEAL ALREADY EXISTS (UPDATE DEAL ONLY)
+            # ------------------------------------------------------------
+            if deal_id:
+                print("♻️ Existing deal found → updating DEAL (not lead). Deal_ID:", deal_id)
+
+                # --- 1. Add Transcript ---
+                requests.post(
+                    f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                    json={
+                        "fields": {
+                            "ENTITY_ID": deal_id,
+                            "ENTITY_TYPE": "deal",
+                            "COMMENT": f"<b>Transcript</b><br>{transcript}"
+                        }
+                    }
+                )
+
+                # --- 2. Add Summary ---
+                if call_summary:
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                        json={
+                            "fields": {
+                                "ENTITY_ID": deal_id,
+                                "ENTITY_TYPE": "deal",
+                                "COMMENT": f"<b>Summary</b><br>{call_summary}"
+                            }
+                        }
+                    )
+
+                # --- 3. Add Recording ---
+                if recording_url:
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                        json={
+                            "fields": {
+                                "ENTITY_ID": deal_id,
+                                "ENTITY_TYPE": "deal",
+                                "COMMENT": (
+                                    f"<b>Call Recording</b><br>"
+                                    f'<a href="{recording_url}" target="_blank">Click</a>'
+                                )
+                            }
+                        }
+                    )
+
+                # --- 4. Update opportunity ---
+                if investment_budget_value:
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.deal.update.json",
+                        json={
+                            "id": deal_id,
+                            "fields": {
+                                "OPPORTUNITY": investment_budget_value,
+                                "CURRENCY_ID": "INR",
+                                "IS_MANUAL_OPPORTUNITY": "Y"
+                            }
+                        }
+                    )
+
+                # --- 5. Create RM Meeting only on DEAL ---
+                start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
+                if start_time:
+                    dt_start = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S") - timedelta(minutes=150)
+                    dt_end = dt_start + timedelta(minutes=30)
+
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.activity.add.json",
+                        json={
+                            "fields": {
+                                "OWNER_TYPE_ID": 2,
+                                "OWNER_ID": deal_id,
+                                "TYPE_ID": 2,
+                                "SUBJECT": "RM Meeting – Auto-created from Voicebot",
+                                "START_TIME": dt_start.strftime("%Y-%m-%dT%H:%M:%S"),
+                                "END_TIME": dt_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                                "DESCRIPTION": (
+                                    f"RM Meeting scheduled.\n"
+                                    f"Raw: {rm_meeting_time_raw}\n"
+                                    f"Parsed: {date_only}\n"
+                                    f"Budget: {investment_budget_raw}"
+                                ),
+                                "DIRECTION": 2,
+                                "COMMUNICATIONS": [
+                                    {
+                                        "VALUE": recipient_phone or to_number,
+                                        "ENTITY_TYPE_ID": 2,
+                                        "ENTITY_ID": deal_id,
+                                    }
+                                ],
+                            }
+                        }
+                    )
+
+                return {"status": "success", "flow": "deal_updated_existing"}
+
             # ------------------------------------------------------------
             #              FINAL FLOW BASED ON webinar_attended_norm
             # ------------------------------------------------------------
