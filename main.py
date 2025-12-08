@@ -585,7 +585,7 @@ async def post_call_webhook(request: Request):
             print("⚠️ Webinar attended != YES → Update lead, DO NOT create deal")
 
             # Prevent overwrite if already processed
-            if update_fields.get("STATUS_ID") == "CONVERTED":
+            if lead_data.get("STATUS_ID") == "CONVERTED":
                 return {"status": "success", "flow": "deal_created_no_overwrite"}
 
 
