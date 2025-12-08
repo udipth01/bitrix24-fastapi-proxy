@@ -50,6 +50,36 @@ def parse_custom_extractions(raw):
             return {}
     return {}
 
+def get_deal_stage_semantics(deal_id):
+    url = f"{BITRIX_WEBHOOK}crm.deal.get.json"
+    response = requests.get(url, params={"id": deal_id})
+    result = response.json().get("result", {})
+
+    stage_id = result.get("STAGE_ID")
+    category_id = result.get("CATEGORY_ID")  # if you use multiple pipelines
+
+    if not stage_id:
+        return None
+
+    # Fetch stage details
+    payload = {
+        "filter": {
+            "ENTITY_ID": f"DEAL_STAGE_{category_id}" if category_id else "DEAL_STAGE",
+            "STATUS_ID": stage_id
+        }
+    }
+    res = requests.post(
+        f"{BITRIX_WEBHOOK}crm.status.list.json",
+        json=payload
+    )
+
+    stage_list = res.json().get("result", [])
+
+    if stage_list:
+        return stage_list[0].get("SEMANTICS")  # process / success / failure
+    
+    return None
+
 
 def parse_budget_to_number(budget_str: str | None) -> int | None:
     """
@@ -456,10 +486,13 @@ async def post_call_webhook(request: Request):
             deal_id = find_deal_for_lead(lead_id)
             print("Deal_id:", deal_id)
 
+            semantics = get_deal_stage_semantics(deal_id)
+            print("semantics:", semantics)
+
             # ------------------------------------------------------------
             # CASE A: DEAL ALREADY EXISTS (UPDATE DEAL ONLY)
             # ------------------------------------------------------------
-            if deal_id:
+            if deal_id and semantics == "process":
                 print("♻️ Existing deal found → updating DEAL (not lead). Deal_ID:", deal_id)
 
                 # --- 1. Add Transcript ---
