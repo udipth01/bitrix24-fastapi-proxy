@@ -487,12 +487,12 @@ async def post_call_webhook(request: Request):
             print("Deal_id:", deal_id)
 
             semantics = get_deal_stage_semantics(deal_id)
-            print("semantics:", semantics)
+            print("Deal_id:", deal_id)
 
             # ------------------------------------------------------------
             # CASE A: DEAL ALREADY EXISTS (UPDATE DEAL ONLY)
             # ------------------------------------------------------------
-            if deal_id and semantics == "process":
+            if deal_id:
                 print("♻️ Existing deal found → updating DEAL (not lead). Deal_ID:", deal_id)
 
                 # --- 1. Add Transcript ---
