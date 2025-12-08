@@ -481,6 +481,7 @@ async def post_call_webhook(request: Request):
 
                 # Find deal created by automation
                 deal_id = find_deal_for_lead(lead_id)
+                print("Deal_id:", deal_id)
 
                 # ---------- Add timeline comments inside the deal ----------
                 if deal_id:
