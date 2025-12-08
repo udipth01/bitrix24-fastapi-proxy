@@ -269,7 +269,11 @@ async def bolna_proxy(request: Request):
             "from_phone_number": "+918035316588",
             "user_data": {
                 "lead_id": lead_data.get("ID"),
-                "lead_name": lead_name
+                "lead_name": lead_name,
+                "user_name": lead_first_name,
+                "first_name": lead_first_name,
+                "name": lead_first_name
+
             }
         }
         headers = {
