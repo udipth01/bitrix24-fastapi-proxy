@@ -448,35 +448,39 @@ async def post_call_webhook(request: Request):
                 "UF_CRM_1586952775435": "136"   # ⭐ Required for deal creation
             }
 
+            # Find deal created by automation
+            deal_id = find_deal_for_lead(lead_id)
+            print("Deal_id:", deal_id)
             # ------------------------------------------------------------
             #              FINAL FLOW BASED ON webinar_attended_norm
             # ------------------------------------------------------------
 
             # ---------- CASE 1: Webinar attended → YES ----------
             if webinar_attended_norm == "yes" and investment_budget_value >=1000000:
-                print("🎉 Webinar attended = YES → Create deal + RM meeting + comments")
+                if deal_id is None:
+                    print("🎉 Webinar attended = YES → Create deal + RM meeting + comments")
 
-                # Mark attended
-                update_fields["UF_CRM_1764239159240"] = "Y"
-                update_fields["STATUS_ID"] = "PROCESSED"
+                    # Mark attended
+                    update_fields["UF_CRM_1764239159240"] = "Y"
+                    update_fields["STATUS_ID"] = "PROCESSED"
 
-                # Update lead FIRST
-                lead_update_payload = {"id": lead_id, "fields": update_fields}
-                print("📤 Sending lead update to Bitrix:", lead_update_payload)
+                    # Update lead FIRST
+                    lead_update_payload = {"id": lead_id, "fields": update_fields}
+                    print("📤 Sending lead update to Bitrix:", lead_update_payload)
 
-                resp = requests.post(
-                    f"{BITRIX_WEBHOOK}crm.lead.update.json",
-                    json=lead_update_payload
-                )
-
-
-                print("🔴 Bitrix lead.update response:", resp.text)
+                    resp = requests.post(
+                        f"{BITRIX_WEBHOOK}crm.lead.update.json",
+                        json=lead_update_payload
+                    )
 
 
+                    print("🔴 Bitrix lead.update response:", resp.text)
 
-                # Allow Bitrix automation to create deal (1–2 sec)
-                import time
-                time.sleep(2)
+
+
+                    # Allow Bitrix automation to create deal (1–2 sec)
+                    import time
+                    time.sleep(2)
                 
 
                 # Find deal created by automation
