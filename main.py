@@ -302,7 +302,7 @@ async def bolna_proxy(request: Request):
                 "lead_name": lead_name,
                 "user_name": lead_first_name,
                 "first_name": lead_first_name,
-                "name": lead_first_name
+                "Name": lead_first_name
 
             }
         }
