@@ -1,22 +1,46 @@
+import json 
+import re
+
+import ast
+
 def parse_custom_extractions(raw):
-    """
-    raw can be:
-    - None
-    - JSON string: '{"RM_meeting_time": "...", "Webinar_attended": "..."}'
-    - dict
-    Returns a dict or {}.
-    """
     if raw is None:
         return {}
+
+    # Already a dict
     if isinstance(raw, dict):
         return raw
+
+    # Only handle strings now
     if isinstance(raw, str):
+
+        # 1) Try normal JSON
         try:
-            return json.loads(raw)
-        except Exception:
-            # If parsing fails, log-like behavior but just return {}
-            print("⚠️ Failed to parse custom_extractions JSON:", raw)
+            parsed = json.loads(raw)
+            # If parsed output is another JSON string → decode again
+            if isinstance(parsed, str):
+                try:
+                    return json.loads(parsed)
+                except:
+                    pass
+            return parsed
+        except:
+            pass
+
+        # 2) Try Python literal (handles single quotes)
+        try:
+            return ast.literal_eval(raw)
+        except:
+            pass
+
+        # 3) Try double JSON loading (Bolna double-encoded case)
+        try:
+            once = json.loads(raw)
+            return json.loads(once)
+        except:
+            print("⚠️ Failed to parse custom_extractions:", raw)
             return {}
+
     return {}
 
 def parse_budget_to_number(budget_str: str | None) -> int | None:
