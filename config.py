@@ -1,7 +1,7 @@
 import os
 from supabase import create_client
-from dotenv import load_dotenv
-load_dotenv()
+# from dotenv import load_dotenv
+# load_dotenv()
 
 BOLNA_TOKEN = os.getenv("BOLNA_API_KEY")
 BITRIX_WEBHOOK = os.getenv("BITRIX_WEBHOOK")
