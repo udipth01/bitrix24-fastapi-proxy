@@ -10,7 +10,7 @@ from config import supabase, BOLNA_TOKEN, BITRIX_WEBHOOK
 IST = pytz.timezone("Asia/Kolkata")
 MAX_ATTEMPTS_DEFAULT = 10
 RETRY_INTERVAL_HOURS = 2
-CALL_CUTOFF_HOUR = 18  # 6 PM IST
+CALL_CUTOFF_HOUR = 23  # 6 PM IST
 
 # ----------------- Supabase helpers -----------------
 
@@ -65,7 +65,7 @@ def compute_next_call_time(attempts: int):
     """Return a UTC datetime for next call. For first attempt, schedule in 0-2 hours depending."""
     now_ist = datetime.now(IST)
     # schedule +2 hours by default
-    candidate = now_ist + timedelta(hours=RETRY_INTERVAL_HOURS)
+    candidate = now_ist + timedelta(minutes=RETRY_INTERVAL_HOURS)
     # Convert to UTC for storing in DB
     return candidate.astimezone(timezone.utc)
 
