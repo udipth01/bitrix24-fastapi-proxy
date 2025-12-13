@@ -2,12 +2,17 @@ import os
 from fastapi import APIRouter,Request
 router = APIRouter()
 import requests
-BITRIX_WEBHOOK = os.getenv("BITRIX_WEBHOOK")
 from helpers.parsing_utils import parse_custom_extractions,parse_budget_to_number
 from helpers.time_utils import parse_rm_meeting_time
 from config import BITRIX_WEBHOOK, BOLNA_TOKEN, supabase
 from datetime import datetime, timedelta
 from helpers.deal_utils import find_deal_for_lead,get_deal_stage_semantics
+from helpers.retry_manager import (
+    insert_or_increment_retry,
+    cancel_retry_for_lead,
+    mark_retry_attempt,
+)
+
 
 
 # ---------- Post-call webhook (Bolna → Supabase + Bitrix lead + deal+activity) ----------
@@ -70,8 +75,57 @@ async def post_call_webhook(request: Request):
     call_type = telephony_data.get("call_type")
     telephony_provider = telephony_data.get("provider")
 
+    # -------------- Call Status --------------
+    status = data.get("status")
+    call_summary = data.get("summary", "")
+    transcript = data.get("transcript", "")
+
+    bolna_id = data.get("id")
+
+    # ==============================================================================
+    # 🔥🔥🔥 1. HANDLE FAILED CALLS (busy / failed / no-answer / not-reachable)
+    # ==============================================================================
+    FAILURE_STATES = ["busy", "failed", "no_answer", "no-answer", "not_reachable"]
+
+    if status in FAILURE_STATES and "udipth" in lead_name.lower():
+        print(f"⚠️ Call failed ({status}) → scheduling retry for lead {lead_id}")
+
+        # Create or increment retry
+        insert_or_increment_retry(
+            lead_id=lead_id,
+            phone=recipient_phone or to_number,
+            lead_name=lead_name,
+            reason=status,
+        )
+
+        # Store bolna call ID
+        mark_retry_attempt(
+            lead_id=lead_id,
+            bolna_call_id=bolna_id,
+            status=status
+        )
+
+        # Add comment on Bitrix lead
+        requests.post(
+            f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+            json={
+                "fields": {
+                    "ENTITY_ID": lead_id,
+                    "ENTITY_TYPE": "lead",
+                    "COMMENT": f"❌ Auto-call failed with status: {status}. Retry has been scheduled."
+                }
+            }
+        )
+
+        # END — Do **NOT** continue with ILTS logic
+        return {"status": "retry_scheduled"}
+
+
     if status == "completed":
         # ✅ Save in Supabase (bolna_call_logs table)
+        cancel_retry_for_lead(lead_id, reason="call_completed")
+
+        print(f"✅ Completed call — retry entry cleared for lead {lead_id}")
         try:
             payload = {
                 "bolna_id": data.get("id"),
