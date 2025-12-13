@@ -28,6 +28,7 @@ async def post_call_webhook(request: Request):
     recipient_data = context.get("recipient_data") or {}
     lead_id = recipient_data.get("lead_id")
     lead_name = recipient_data.get("lead_name")
+    first_name = recipient_data.get("first_name")
     recipient_phone = context.get("recipient_phone_number")
 
     # Extracted tags
@@ -87,7 +88,7 @@ async def post_call_webhook(request: Request):
     # ==============================================================================
     FAILURE_STATES = ["busy", "failed", "no_answer", "no-answer", "not_reachable"]
 
-    if status in FAILURE_STATES and "udipth" in lead_name.lower():
+    if status in FAILURE_STATES and "udipth" in first_name.lower():
         print(f"⚠️ Call failed ({status}) → scheduling retry for lead {lead_id}")
 
         # Create or increment retry
