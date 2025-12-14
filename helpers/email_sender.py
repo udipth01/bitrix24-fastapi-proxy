@@ -14,7 +14,7 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
     subject = "Unable to Connect – Finideas"
     
     body = f"""
-Dear Sir,<br><br>
+Dear <br>{lead_name}ji<br>,
 
 Greetings from Finideas!<br><br>
 
@@ -37,18 +37,33 @@ Best regards,<br>
 Team Finideas
 """
 
-    # Bitrix email send API
     payload = {
         "fields": {
             "OWNER_ID": lead_id,
-            "OWNER_TYPE_ID": 1,        # 1 = Lead
-            "TYPE_ID": "EMAIL",
+            "OWNER_TYPE_ID": 1,            # Lead
+            "TYPE_ID": 4,                  # EMAIL activity
             "SUBJECT": subject,
             "DESCRIPTION": body,
-            "FROM": "crm@finideas.com",
-            "TO": lead_email
+            "DESCRIPTION_TYPE": 2,         # 2 = HTML
+
+            # Required for EMAIL activity
+            "COMMUNICATIONS": [
+                {
+                    "VALUE": lead_email,
+                    "ENTITY_ID": lead_id,
+                    "ENTITY_TYPE_ID": 1,
+                    "TYPE": "EMAIL"
+                }
+            ],
+
+            # Email settings
+            "SETTINGS": {
+                "MESSAGE_FROM": "updates@finideas.com",
+                "MESSAGE_TO": lead_email
+            }
         }
     }
+
 
     url = f"{BITRIX_WEBHOOK}crm.activity.add.json"
 
