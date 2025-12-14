@@ -13,29 +13,30 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
     # Prepare email content
     subject = "Unable to Connect – Finideas"
     
-    body = f"""
-Dear <br>{lead_name}ji<br>,
+    body = f"""Dear {lead_name}ji,<br><br>
 
-Greetings from Finideas!<br><br>
+    Greetings from Finideas!<br><br>
 
-We’ve been trying to connect with you regarding your interest in our <b>Index Long-Term Strategy</b> investment 
-but were unable to reach you on <b>{lead_phone}</b>.<br><br>
+    We’ve been trying to connect with you regarding your interest in our 
+    <b>Index Long-Term Strategy</b> investment but were unable to reach you on 
+    <b>{lead_phone}</b>.<br><br>
 
-Kindly let us know a convenient time for a quick call, 
-or feel free to share an alternate contact number.<br><br>
+    Kindly let us know a convenient time for a quick call, 
+    or feel free to share an alternate contact number.<br><br>
 
-You can also reach us directly on WhatsApp:<br>
-➡️ <a href="https://wa.me/7434985600">https://wa.me/7434985600</a><br><br>
+    You can also reach us directly on WhatsApp:<br>
+    ➡️ <a href="https://wa.me/7434985600">https://wa.me/7434985600</a><br><br>
 
-To better understand our strategy and its long-term benefits, 
-we invite you to watch this short video:<br>
-➡️ <b><a href="https://youtu.be/example">Investment Overview – Click to Watch</a></b><br><br>
+    To better understand our strategy and its long-term benefits, 
+    we invite you to watch this short video:<br>
+    ➡️ <b><a href="https://youtu.be/example">Investment Overview – Click to Watch</a></b><br><br>
 
-We look forward to assisting you in your investment journey.<br><br>
+    We look forward to assisting you in your investment journey.<br><br>
 
-Best regards,<br>
-Team Finideas
-"""
+    Best regards,<br>
+    Team Finideas
+    """
+
 
     payload = {
         "fields": {

@@ -86,9 +86,15 @@ async def post_call_webhook(request: Request):
     lead_data = br.json().get("result", {})
 
     first_name = lead_data.get("NAME")
+
     lead_email = None
-    if lead_data.get("EMAIL"):
-        lead_email = lead_data["EMAIL"][0].get("VALUE")
+    emails = lead_data.get("EMAIL") or []
+
+    for item in emails:
+        if item.get("VALUE"):
+            lead_email = item["VALUE"]
+            break
+
 
     # ==============================================================================
     # 🔥🔥🔥 1. HANDLE FAILED CALLS (busy / failed / no-answer / not-reachable)
@@ -125,7 +131,7 @@ async def post_call_webhook(request: Request):
             }
         )
 
-        send_manual_retry_email(lead_id=lead_id,lead_name=lead_name,lead_phone=recipient_phone,lead_email=lead_email)
+        send_manual_retry_email(lead_id=lead_id,lead_name=first_name,lead_phone=recipient_phone,lead_email=lead_email)
 
         # END — Do **NOT** continue with ILTS logic
         return {"status": "retry_scheduled"}
