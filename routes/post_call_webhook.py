@@ -12,7 +12,7 @@ from helpers.retry_manager import (
     cancel_retry_for_lead,
     mark_retry_attempt,
 )
-
+from helpers.email_sender import send_manual_retry_email
 
 
 # ---------- Post-call webhook (Bolna → Supabase + Bitrix lead + deal+activity) ----------
@@ -28,7 +28,6 @@ async def post_call_webhook(request: Request):
     recipient_data = context.get("recipient_data") or {}
     lead_id = recipient_data.get("lead_id")
     lead_name = recipient_data.get("lead_name")
-    first_name = recipient_data.get("first_name")
     recipient_phone = context.get("recipient_phone_number")
 
     # Extracted tags
@@ -83,6 +82,14 @@ async def post_call_webhook(request: Request):
 
     bolna_id = data.get("id")
 
+    br = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id}, timeout=10)
+    lead_data = br.json().get("result", {})
+
+    first_name = lead_data.get("NAME")
+    lead_email = None
+    if lead_data.get("EMAIL"):
+        lead_email = lead_data["EMAIL"][0].get("VALUE")
+
     # ==============================================================================
     # 🔥🔥🔥 1. HANDLE FAILED CALLS (busy / failed / no-answer / not-reachable)
     # ==============================================================================
@@ -117,6 +124,8 @@ async def post_call_webhook(request: Request):
                 }
             }
         )
+
+        send_manual_retry_email(lead_id=lead_id,lead_name=lead_name,lead_phone=recipient_phone,lead_email=lead_email)
 
         # END — Do **NOT** continue with ILTS logic
         return {"status": "retry_scheduled"}
