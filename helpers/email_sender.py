@@ -72,7 +72,7 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
 
         # MUST MATCH your mailbox name in Bitrix
         "SETTINGS": {
-            "MESSAGE_FROM": "updates@finideas.com",
+            "MESSAGE_FROM": "udipth.talera@finideas.com",
             "MESSAGE_TO": lead_email
         }
     }
