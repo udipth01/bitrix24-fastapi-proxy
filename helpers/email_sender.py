@@ -39,31 +39,40 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
 
 
     payload = {
-        "fields": {
-            "OWNER_ID": lead_id,
-            "OWNER_TYPE_ID": 1,            # Lead
-            "TYPE_ID": 4,                  # EMAIL activity
-            "SUBJECT": subject,
-            "DESCRIPTION": body,
-            "DESCRIPTION_TYPE": 2,         # 2 = HTML
+    "fields": {
+        "OWNER_ID": lead_id,
+        "OWNER_TYPE_ID": 1,           # 1 = Lead
+        "TYPE_ID": 4,                 # Activity type = Email
+        "SUBJECT": subject,
+        "DESCRIPTION": body,
+        "DESCRIPTION_TYPE": 2,        # HTML
 
-            # Required for EMAIL activity
-            "COMMUNICATIONS": [
-                {
-                    "VALUE": lead_email,
-                    "ENTITY_ID": lead_id,
-                    "ENTITY_TYPE_ID": 1,
-                    "TYPE": "EMAIL"
-                }
-            ],
-
-            # Email settings
-            "SETTINGS": {
-                "MESSAGE_FROM": "updates@finideas.com",
-                "MESSAGE_TO": lead_email
+        # REQUIRED for Bitrix to actually SEND the email
+        "BINDINGS": [
+            {
+                "OWNER_ID": lead_id,
+                "OWNER_TYPE_ID": 1
             }
+        ],
+
+        # REQUIRED communication format
+        "COMMUNICATIONS": [
+            {
+                "ENTITY_ID": lead_id,
+                "ENTITY_TYPE_ID": 1,
+                "TYPE": "EMAIL",
+                "VALUE": lead_email
+            }
+        ],
+
+        # MUST MATCH your mailbox name in Bitrix
+        "SETTINGS": {
+            "MESSAGE_FROM": "updates@finideas.com",
+            "MESSAGE_TO": lead_email
         }
     }
+}
+
 
 
     url = f"{BITRIX_WEBHOOK}crm.activity.add.json"
