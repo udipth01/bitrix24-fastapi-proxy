@@ -37,16 +37,30 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
     Team Finideas
     """
 
-
+    sender_string = "Finideas Investment Advisor Pvt. Ltd. <updates@finideas.com>"
     payload = {
     "fields": {
         "OWNER_ID": lead_id,
         "OWNER_TYPE_ID": 1,           # 1 = Lead
         "TYPE_ID": 4,                 # Activity type = Email
+        "PROVIDER_ID": "email",       # REQUIRED
+        "PROVIDER_TYPE_ID": "EMAIL",  # REQUIRED
         "SUBJECT": subject,
         "DESCRIPTION": body,
         "DESCRIPTION_TYPE": 2,        # HTML
         "IS_INCOMING": "N",
+        "COMPLETED": "Y",
+         "DIRECTION": 2,
+      "COMMUNICATIONS": [
+        {
+          "ENTITY_ID": lead_id,
+          "ENTITY_TYPE_ID": 1,
+          "TYPE": "EMAIL",
+          "VALUE": lead_email,
+          "FROM": sender_string
+        }
+      ],
+
 
 
         # REQUIRED for Bitrix to actually SEND the email
@@ -57,24 +71,15 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
             }
         ],
 
-        # REQUIRED communication format
-        "COMMUNICATIONS": [
-            {
-                "ENTITY_ID": lead_id,
-                "ENTITY_TYPE_ID": 1,
-                "TYPE": "EMAIL",
-                "VALUE": lead_email
-            }
-        ],
 
         # REQUIRED: Who is sending the email
-        "AUTHOR_ID": 24,
-        "RESPONSIBLE_ID": 24,
+        "AUTHOR_ID": 1,
+        "RESPONSIBLE_ID": 1,
 
 
         # MUST MATCH your mailbox name in Bitrix
         "SETTINGS": {
-            "MESSAGE_FROM": "udipth.talera@finideas.com",
+        "MESSAGE_FROM": sender_string,
             "MESSAGE_TO": lead_email
         }
     }
