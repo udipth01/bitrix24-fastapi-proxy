@@ -65,6 +65,11 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
             }
         ],
 
+        # REQUIRED: Who is sending the email
+        "AUTHOR_ID": 24,
+        "RESPONSIBLE_ID": 24,
+
+
         # MUST MATCH your mailbox name in Bitrix
         "SETTINGS": {
             "MESSAGE_FROM": "updates@finideas.com",
