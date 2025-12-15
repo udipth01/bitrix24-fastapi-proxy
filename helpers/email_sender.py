@@ -46,6 +46,8 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
         "SUBJECT": subject,
         "DESCRIPTION": body,
         "DESCRIPTION_TYPE": 2,        # HTML
+        "IS_INCOMING": "N",
+
 
         # REQUIRED for Bitrix to actually SEND the email
         "BINDINGS": [
