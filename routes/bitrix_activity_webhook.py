@@ -16,7 +16,29 @@ async def bitrix_activity_webhook(request: Request):
         - A HUMAN agent made a manual phone call (Acefone / Mobile / Call Center)
         - Lead or Deal received manual attention → retry auto-calls must stop.
     """
-    data = await request.json()
+    # Bitrix sends x-www-form-urlencoded, not JSON
+    raw_body = (await request.body()).decode()
+    from urllib.parse import parse_qs
+
+    print("🔹 Raw incoming body:", raw_body)
+
+    parsed = parse_qs(raw_body)
+    print("🔹 Parsed payload:", parsed)
+
+    # Convert Bitrix structure to your expected JSON-like dict
+    data = {
+        "data": {
+            "FIELDS": {
+                "ID": parsed.get("data[FIELDS][ID]", [None])[0],
+                "OWNER_TYPE_ID": parsed.get("data[FIELDS][OWNER_TYPE_ID]", [None])[0],
+                "OWNER_ID": parsed.get("data[FIELDS][OWNER_ID]", [None])[0],
+                "PROVIDER_ID": parsed.get("data[FIELDS][PROVIDER_ID]", [None])[0],
+                "RESULT_STATUS": parsed.get("data[FIELDS][RESULT_STATUS]", [None])[0],
+                "SUBJECT": parsed.get("data[FIELDS][SUBJECT]", [""])[0],
+            }
+        }
+    }
+
     print("📥 Bitrix Activity Webhook Received:", data)
 
     fields = data.get("data", {}).get("FIELDS", {})

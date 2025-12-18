@@ -7,10 +7,15 @@ from routes.bitrix_activity_webhook import router as bitrix_activity_router
 
 app = FastAPI()
 
-app.include_router(bolna_router)
-app.include_router(postcall_router)
-app.include_router(retry_router)
-app.include_router(bitrix_activity_router)
+app.include_router(bolna_router, prefix="")
+app.include_router(postcall_router, prefix="")
+app.include_router(retry_router, prefix="")
+app.include_router(bitrix_activity_router, prefix="")
+
+print("\n🔍 Registered routes:")
+for route in app.routes:
+    print("→", route.path)
+
 
 @app.get("/health")
 def health_check():
