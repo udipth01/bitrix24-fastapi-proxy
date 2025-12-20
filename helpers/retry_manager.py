@@ -14,7 +14,7 @@ CALL_CUTOFF_HOUR = 6  # 6 PM IST
 
 # ----------------- Supabase helpers -----------------
 
-def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, reason: str = None):
+def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, lead_first_name: str | None = None,reason: str = None):
     """
     If an entry exists (paused=False and attempts < max), increment attempts and update next_call_at.
     Else insert new entry with next_call_at = now + RETRY_INTERVAL_HOURS (or immediate if you want).
@@ -30,7 +30,7 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, r
                 return row
             attempts = (row.get("attempts") or 0) + 1
             max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
-            next_call = compute_next_call_time(attempts, row.get("lead_name"))
+            next_call = compute_next_call_time( row.get("lead_first_name"))
             updated = supabase.table("outbound_call_retries").update({
                 "attempts": attempts,
                 "next_call_at": next_call.isoformat(),
@@ -41,10 +41,11 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, r
             return updated.data[0] if updated.data else None
         else:
             # new entry
-            next_call = compute_next_call_time(0,row.get("lead_name"))
+            next_call = compute_next_call_time(lead_first_name)
             payload = {
                 "lead_id": lead_id,
                 "lead_name": lead_name,
+                "lead_first_name": lead_first_name,  
                 "phone": phone,
                 "attempts": 0,
                 "max_attempts": MAX_ATTEMPTS_DEFAULT,
@@ -61,7 +62,7 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, r
         print("❌ insert_or_increment_retry error:", e, traceback.format_exc())
         return None
 
-def compute_next_call_time(attempts: int, lead_first_name: str | None):
+def compute_next_call_time(lead_first_name: str | None):
     now_ist = datetime.now(IST)
     policy = get_lead_calling_policy(lead_first_name)
 
@@ -81,14 +82,14 @@ def mark_retry_attempt(lead_id: str, bolna_call_id: str = None, status: str = No
         now = datetime.now(timezone.utc)
         if not rows:
             # fallback — create
-            return insert_or_increment_retry(lead_id, phone="unknown", lead_name=None, reason=status)
+            return insert_or_increment_retry(lead_id, phone="unknown", lead_name=row.get("lead_name"),lead_first_name=row.get("lead_first_name"), reason=status)
         row = rows[0]
         attempts = (row.get("attempts") or 0) + 1
         max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
         bolna_ids = row.get("bolna_call_ids") or []
         if bolna_call_id:
             bolna_ids = bolna_ids + [bolna_call_id]
-        next_call = compute_next_call_time(attempts, row.get("lead_name"))
+        next_call = compute_next_call_time( row.get("lead_first_name"))
         payload = {
             "attempts": attempts,
             "last_status": status,
@@ -163,7 +164,10 @@ def place_bolna_call(phone: str, lead_id: str, lead_name: str = None, user_data:
         if not BOLNA_TOKEN:
             raise RuntimeError("BOLNA_TOKEN not set")
             # Select agent based on lead_name
-        if "udipth" in lead_name.lower() or "udipth" in lead_first_name.lower():
+        if (
+            (lead_first_name and lead_first_name.lower() == "udipth") or
+            (lead_name and "udipth" in lead_name.lower())
+        ):
             agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
         else:
             agent_id = "c363b7ee-0225-47f1-86b4-86c91dfabeb8"
@@ -199,7 +203,7 @@ def is_sunday_blackout_window(now_ist: datetime) -> bool:
     return False
 
 
-def can_place_call_now(lead_created_at_str: str | None, attempts: int):
+def can_place_call_now(lead_created_at_str: str | None, attempts: int,lead_first_name: str):
     """
     Rule:
       - No calls allowed after 18:00 IST, except allow 1st call if lead was created after 18:00 (special case).
@@ -283,7 +287,7 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
             results.append({"lead_id": lead_id, "action": "paused_max_attempts"})
             continue
 
-        lead_first_name = lead_data.get("NAME")
+        lead_first_name =  r.get("lead_first_name")
 
         if not can_place_call_now(lead_created_at, attempts, lead_first_name):
             # reschedule for next working window (tomorrow 10am IST maybe)
