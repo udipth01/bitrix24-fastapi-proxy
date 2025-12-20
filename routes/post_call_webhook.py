@@ -130,9 +130,9 @@ async def post_call_webhook(request: Request):
 
         return {"status": "junk_lead_removed"}
 
-
+ 
     # --- CASE 2: user_availability = busy → treat like failure state ---
-    if user_availability == "busy":
+    if user_availability == "busy" or user_availability == "not_interpretable":
         print(f"📵 User busy → scheduling retry for lead {lead_id}")
 
         insert_or_increment_retry(
