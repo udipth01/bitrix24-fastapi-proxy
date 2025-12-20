@@ -82,7 +82,7 @@ def mark_retry_attempt(lead_id: str, bolna_call_id: str = None, status: str = No
         now = datetime.now(timezone.utc)
         if not rows:
             # fallback — create
-            return insert_or_increment_retry(lead_id, phone="unknown", lead_name=row.get("lead_name"),lead_first_name=row.get("lead_first_name"), reason=status)
+            return insert_or_increment_retry(lead_id, phone="unknown", lead_name=None,lead_first_name=None, reason=status)
         row = rows[0]
         attempts = (row.get("attempts") or 0) + 1
         max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
@@ -143,7 +143,7 @@ def get_lead_calling_policy(lead_first_name: str | None):
     """
     if lead_first_name and lead_first_name.lower() == "udipth":
         return {
-            "retry_interval_minutes": RETRY_INTERVAL_HOURS * 60,  # minutes
+            "retry_interval_minutes": RETRY_INTERVAL_HOURS ,  # minutes
             "retry_interval_unit": "minutes",
             "call_cutoff_hour": 23
         }
@@ -312,8 +312,6 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
             }).eq("lead_id", lead_id).execute()
             results.append({"lead_id": lead_id, "action": "rescheduled_due_to_cutoff"})
             continue
-
-        lead_first_name = lead_data.get("NAME")
 
         # Place call
         bolna_response = place_bolna_call(phone=phone, lead_id=lead_id, lead_name=r.get("lead_name"),lead_first_name=lead_first_name)
