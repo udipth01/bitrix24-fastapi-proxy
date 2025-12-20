@@ -46,6 +46,14 @@ async def post_call_webhook(request: Request):
         or ce.get("investment_budget")
         or ce.get("Investment_Category")  # fallback description "over 10 Lakh"
     )
+
+    # ============================================================
+    # 🔥 New Custom Extraction Logic: Lead Hotness + Availability
+    # ============================================================
+
+    lead_hotness = ce.get("Lead_hotness", "").strip().upper()
+    user_availability = ce.get("user_availability", "").strip().lower()
+
     webinar_attended_norm = (webinar_attended or "").strip().lower()
 
     # Parse budget to numeric INR
@@ -56,7 +64,9 @@ async def post_call_webhook(request: Request):
         f"RM_meeting_time={rm_meeting_time_raw}, "
         f"Webinar_attended={webinar_attended}, "
         f"Investment_Budget={investment_budget_raw} "
-        f"(parsed={investment_budget_value})"
+        f"(parsed={investment_budget_value})",
+        f"Lead Hotness = {lead_hotness}", 
+        f"User Availability = {user_availability}"
     )
 
     # Call metadata
@@ -95,13 +105,66 @@ async def post_call_webhook(request: Request):
             lead_email = item["VALUE"]
             break
 
+    # ============================================================
+    # 🚫 USER AVAILABILITY FIRST PRIORITY
+    # ============================================================
+
+    # --- CASE 1: user_availability = junk → Kill lead immediately ---
+    if user_availability == "junk":
+        print(f"🗑️ Lead {lead_id} marked as JUNK via AI → stopping all future calls.")
+
+        # 1. Move lead to JUNK
+        requests.post(
+            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            json={
+                "id": lead_id,
+                "fields": {
+                    "STATUS_ID": "JUNK",
+                    "COMMENTS": "AI classified user as JUNK"
+                }
+            }
+        )
+
+        # 2. Remove lead from retry queue in Supabase
+        cancel_retry_for_lead(lead_id, reason="junk_classified")
+
+        return {"status": "junk_lead_removed"}
+
+
+    # --- CASE 2: user_availability = busy → treat like failure state ---
+    if user_availability == "busy":
+        print(f"📵 User busy → scheduling retry for lead {lead_id}")
+
+        insert_or_increment_retry(
+            lead_id=lead_id,
+            phone=recipient_phone or to_number,
+            lead_name=lead_name,
+            reason="busy"
+        )
+
+        mark_retry_attempt(lead_id, bolna_call_id=bolna_id, status="busy")
+
+        # Log on timeline
+        requests.post(
+            f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+            json={
+                "fields": {
+                    "ENTITY_ID": lead_id,
+                    "ENTITY_TYPE": "lead",
+                    "COMMENT": "📵 User said they are BUSY — retry scheduled automatically"
+                }
+            }
+        )
+
+        return {"status": "retry_scheduled_busy"}
+
 
     # ==============================================================================
     # 🔥🔥🔥 1. HANDLE FAILED CALLS (busy / failed / no-answer / not-reachable)
     # ==============================================================================
     FAILURE_STATES = ["busy", "failed", "no_answer", "no-answer", "not_reachable"]
 
-    if status in FAILURE_STATES and "udipth" in first_name.lower():
+    if status in FAILURE_STATES :
         print(f"⚠️ Call failed ({status}) → scheduling retry for lead {lead_id}")
 
         # Create or increment retry
@@ -308,6 +371,32 @@ async def post_call_webhook(request: Request):
                             }
                         }
                     )
+
+                # ============================================================
+                # 🔥 Lead Hotness → Move Deal Stage
+                # ============================================================
+
+                if lead_hotness in ("COLD", "WARM", "HOT"):
+                    stage_map = {
+                        "COLD": "4",
+                        "WARM": "6",
+                        "HOT": "8"
+                    }
+
+                    new_stage = stage_map.get(lead_hotness)
+
+                    print(f"🔥 Updating deal {deal_id} to stage {new_stage} based on hotness = {lead_hotness}")
+
+                    requests.post(
+                        f"{BITRIX_WEBHOOK}crm.deal.update.json",
+                        json={
+                            "id": deal_id,
+                            "fields": {
+                                "STAGE_ID": new_stage
+                            }
+                        }
+                    )
+
 
                 # --- 5. Create RM Meeting only on DEAL ---
                 start_time, date_only = parse_rm_meeting_time(rm_meeting_time_raw)
