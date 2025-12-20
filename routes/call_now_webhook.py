@@ -9,9 +9,12 @@ router = APIRouter()
 
 @router.post("/bitrix/call-now")
 async def bitrix_call_now(request: Request):
-    payload = await request.json()
+    # Bitrix sends FORM / QUERY params, not JSON
+    data = dict(await request.form()) if request.headers.get("content-type", "").startswith("application/x-www-form-urlencoded") else dict(request.query_params)
 
-    lead_id = payload.get("ID")
+    print("📥 Bitrix call-now payload:", data)
+
+    lead_id = data.get("ID") or data.get("lead_id")
     if not lead_id:
         return {"status": "ignored", "reason": "no lead id"}
 
@@ -31,9 +34,9 @@ async def bitrix_call_now(request: Request):
     lead_first_name = lead.get("NAME")
     lead_name = f"{lead.get('NAME','')} {lead.get('LAST_NAME','')}".strip()
 
-    # ✅ Enqueue call (DO NOT call Bolna directly)
+    # ✅ Queue retry-based calling
     insert_or_increment_retry(
-        lead_id=lead_id,
+        lead_id=str(lead_id),
         phone=phone,
         lead_name=lead_name,
         lead_first_name=lead_first_name,
