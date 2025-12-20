@@ -139,7 +139,7 @@ async def post_call_webhook(request: Request):
             lead_id=lead_id,
             phone=recipient_phone or to_number,
             lead_name=lead_name,
-            lead_first_name=first_name
+            lead_first_name=first_name,
             reason="busy"
         )
 
@@ -173,7 +173,7 @@ async def post_call_webhook(request: Request):
             lead_id=lead_id,
             phone=recipient_phone or to_number,
             lead_name=lead_name,
-            lead_first_name=first_name
+            lead_first_name=first_name,
             reason=status,
         )
 
