@@ -30,7 +30,7 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, r
                 return row
             attempts = (row.get("attempts") or 0) + 1
             max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
-            next_call = compute_next_call_time(attempts, lead_name)
+            next_call = compute_next_call_time(attempts, row.get("lead_name"))
             updated = supabase.table("outbound_call_retries").update({
                 "attempts": attempts,
                 "next_call_at": next_call.isoformat(),
@@ -41,7 +41,7 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, r
             return updated.data[0] if updated.data else None
         else:
             # new entry
-            next_call = compute_next_call_time(0)
+            next_call = compute_next_call_time(0,row.get("lead_name"))
             payload = {
                 "lead_id": lead_id,
                 "lead_name": lead_name,
@@ -61,13 +61,17 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, r
         print("❌ insert_or_increment_retry error:", e, traceback.format_exc())
         return None
 
-def compute_next_call_time(attempts: int):
-    """Return a UTC datetime for next call. For first attempt, schedule in 0-2 hours depending."""
+def compute_next_call_time(attempts: int, lead_first_name: str | None):
     now_ist = datetime.now(IST)
-    # schedule +2 hours by default
-    candidate = now_ist + timedelta(hours=RETRY_INTERVAL_HOURS)
-    # Convert to UTC for storing in DB
+    policy = get_lead_calling_policy(lead_first_name)
+
+    if policy["retry_interval_unit"] == "minutes":
+        candidate = now_ist + timedelta(minutes=policy["retry_interval_minutes"])
+    else:
+        candidate = now_ist + timedelta(hours=policy["retry_interval_hours"])
+
     return candidate.astimezone(timezone.utc)
+
 
 def mark_retry_attempt(lead_id: str, bolna_call_id: str = None, status: str = None):
     """Increment attempts and optionally append bolna_call_id, update last_status and next_call_at."""
