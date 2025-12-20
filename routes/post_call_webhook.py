@@ -139,6 +139,7 @@ async def post_call_webhook(request: Request):
             lead_id=lead_id,
             phone=recipient_phone or to_number,
             lead_name=lead_name,
+            lead_first_name=first_name
             reason="busy"
         )
 
@@ -172,6 +173,7 @@ async def post_call_webhook(request: Request):
             lead_id=lead_id,
             phone=recipient_phone or to_number,
             lead_name=lead_name,
+            lead_first_name=first_name
             reason=status,
         )
 
@@ -439,7 +441,7 @@ async def post_call_webhook(request: Request):
             # ------------------------------------------------------------
 
             # ---------- CASE 1: Webinar attended → YES ----------
-            if webinar_attended_norm == "yes" and investment_budget_value >=1000000:
+            if webinar_attended_norm == "yes" and investment_budget_value is not None and investment_budget_value >=1000000:
                 if deal_id is None:
                     print("🎉 Webinar attended = YES → Create deal + RM meeting + comments")
 
