@@ -344,6 +344,15 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
         if isoparse(r["next_call_at"]) > now_utc:
             # Not time yet → do nothing
             continue
+        
+        now_ist = datetime.now(IST)
+        if is_sunday_blackout_window(now_ist):
+            next_try = get_next_allowed_call_time(lead_first_name)
+            supabase.table("outbound_call_retries").update({
+                "next_call_at": next_try.isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("lead_id", lead_id).execute()
+            continue
 
         # Place call
         bolna_response = place_bolna_call(phone=phone, lead_id=lead_id, lead_name=r.get("lead_name"),lead_first_name=lead_first_name)
