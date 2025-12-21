@@ -80,6 +80,28 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
 
 #     return candidate.astimezone(timezone.utc)
 
+def is_within_retry_calling_window(now_ist: datetime) -> bool:
+    """
+    Retry calls allowed only between 09:00–18:00 IST
+    """
+    return 9 <= now_ist.hour < 18
+
+def next_retry_window_start(now_ist: datetime) -> datetime:
+    """
+    Returns next allowed retry start time (09:00 IST)
+    """
+    # If before 9 AM → today 9 AM
+    if now_ist.hour < 9:
+        return now_ist.replace(hour=9, minute=0, second=0, microsecond=0)
+
+    # If after 6 PM → tomorrow 9 AM
+    if now_ist.hour >= 18:
+        next_day = now_ist + timedelta(days=1)
+        return next_day.replace(hour=9, minute=0, second=0, microsecond=0)
+
+    # Otherwise, already inside window
+    return now_ist
+
 
 def mark_retry_attempt(lead_id: str, bolna_call_id: str = None, status: str = None):
     """Increment attempts and optionally append bolna_call_id, update last_status and next_call_at."""
@@ -167,16 +189,38 @@ def get_next_allowed_call_time(
     if attempts == 0:
         return base_time_ist.astimezone(timezone.utc)
 
+    # policy = get_lead_calling_policy(lead_first_name)
+
+    # if policy["retry_interval_unit"] == "minutes":
+    #     next_try = base_time_ist + timedelta(
+    #         minutes=policy["retry_interval_minutes"]
+    #     )
+    # else:
+    #     next_try = base_time_ist + timedelta(
+    #         hours=policy["retry_interval_hours"]
+    #     )
+
+    # 🔁 RETRY LOGIC BELOW
+
+    # Step 1: enforce retry calling window (9 AM – 6 PM)
+    adjusted_base = next_retry_window_start(base_time_ist)
+
+    # Step 2: add retry interval
     policy = get_lead_calling_policy(lead_first_name)
 
     if policy["retry_interval_unit"] == "minutes":
-        next_try = base_time_ist + timedelta(
+        next_try = adjusted_base + timedelta(
             minutes=policy["retry_interval_minutes"]
         )
     else:
-        next_try = base_time_ist + timedelta(
+        next_try = adjusted_base + timedelta(
             hours=policy["retry_interval_hours"]
         )
+
+    # Step 3: if interval pushed it outside window → move to next 9 AM
+    if not is_within_retry_calling_window(next_try):
+        next_try = next_retry_window_start(next_try)
+
 
     return next_try.astimezone(timezone.utc)
 
