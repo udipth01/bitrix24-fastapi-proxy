@@ -4,7 +4,7 @@ router = APIRouter()
 from urllib.parse import parse_qs
 from datetime import datetime
 from config import BITRIX_WEBHOOK, BOLNA_TOKEN, supabase
-
+from helpers.retry_manager import insert_or_increment_retry
 
 
 # ---------- Bitrix Lead → Bolna trigger (unchanged) ----------
@@ -88,13 +88,20 @@ async def bolna_proxy(request: Request):
             "Authorization": f"Bearer {BOLNA_TOKEN}",
             "Content-Type": "application/json"
         }
-        bolna_response = requests.post(
-            "https://api.bolna.ai/call",
-            json=bolna_payload,
-            headers=headers
+
+        insert_or_increment_retry(
+        lead_id=lead_data.get("ID"),
+        phone=phone,
+        lead_name=lead_name,
+        lead_first_name=lead_first_name,
+        reason="bitrix_webhook"
         )
-        print("📞 Bolna.ai response:", bolna_response.text)
-        return {"status": "forwarded", "bolna_response": bolna_response.text}
+
+        return {
+            "status": "queued",
+            "lead_id": lead_data.get("ID")
+        }
+
 
     return {"status": "skipped", "reason": "No phone number found"}
 
