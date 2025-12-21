@@ -29,6 +29,10 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
             row = rows[0]
             if row.get("paused"):
                 return row
+            
+            # ✅ do NOT reschedule if already scheduled in future
+            if isoparse(row["next_call_at"]) > datetime.now(timezone.utc):
+                return row
             # attempts = (row.get("attempts") or 0) + 1
             # max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
             next_call = get_next_allowed_call_time( row.get("lead_first_name"))
@@ -344,7 +348,7 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
         if isoparse(r["next_call_at"]) > now_utc:
             # Not time yet → do nothing
             continue
-        
+
         now_ist = datetime.now(IST)
         if is_sunday_blackout_window(now_ist):
             next_try = get_next_allowed_call_time(lead_first_name)
