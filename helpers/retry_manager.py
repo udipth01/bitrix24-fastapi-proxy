@@ -256,9 +256,9 @@ def place_bolna_call(phone: str, lead_id: str, lead_name: str = None, user_data:
             (lead_first_name and lead_first_name.lower() == "udipth") or
             (lead_name and "udipth" in lead_name.lower())
         ):
-            agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
+            agent_id = "eaa1df90-6dd4-45f3-a6e1-76c3fc01ac4b"
         else:
-            agent_id = "c363b7ee-0225-47f1-86b4-86c91dfabeb8"
+            agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
             
         payload = {
             "agent_id": agent_id,
