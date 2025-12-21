@@ -35,7 +35,8 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
                 return row
             # attempts = (row.get("attempts") or 0) + 1
             # max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
-            next_call = get_next_allowed_call_time( row.get("lead_first_name"))
+            attempts = row.get("attempts") or 0
+            next_call = get_next_allowed_call_time( row.get("lead_first_name"),attempts)
             updated = supabase.table("outbound_call_retries").update({
                 # "attempts": attempts,
                 "next_call_at": next_call.isoformat(),
@@ -46,7 +47,7 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
             return updated.data[0] if updated.data else None
         else:
             # new entry
-            next_call = get_next_allowed_call_time(lead_first_name)
+            next_call = get_next_allowed_call_time(lead_first_name,attempts=0)
             payload = {
                 "lead_id": lead_id,
                 "lead_name": lead_name,
@@ -95,7 +96,7 @@ def mark_retry_attempt(lead_id: str, bolna_call_id: str = None, status: str = No
         bolna_ids = row.get("bolna_call_ids") or []
         if bolna_call_id:
             bolna_ids = bolna_ids + [bolna_call_id]
-        next_call = get_next_allowed_call_time( row.get("lead_first_name"))
+        next_call = get_next_allowed_call_time( row.get("lead_first_name"),attempts)
         payload = {
             "attempts": attempts,
             "last_status": status,
@@ -145,6 +146,7 @@ def get_due_retries(limit=200):
 
 def get_next_allowed_call_time(
     lead_first_name: str | None,
+    attempts:int = 1,
     base_time_ist: datetime | None = None
 ):
     """
@@ -160,6 +162,10 @@ def get_next_allowed_call_time(
             hour=12, minute=1, second=0, microsecond=0
         )
         return next_try.astimezone(timezone.utc)
+    
+    # ✅ FIRST CALL → IMMEDIATE
+    if attempts == 0:
+        return base_time_ist.astimezone(timezone.utc)
 
     policy = get_lead_calling_policy(lead_first_name)
 

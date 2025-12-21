@@ -29,7 +29,7 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
 
     To better understand our strategy and its long-term benefits,
     we invite you to watch this short video:
-    ➡️ <b><a href="https://youtu.be/example">Investment Overview – Click to Watch</a></b>
+    ➡️ <b><a href="https://www.youtube.com/watch?v=-3FZE1aGZOU">Investment Overview – Click to Watch</a></b>
 
     We look forward to assisting you in your investment journey.
 
