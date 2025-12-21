@@ -62,6 +62,7 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
                 "bolna_call_ids": []
             }
             res = supabase.table("outbound_call_retries").insert(payload).execute()
+            print("insert_or_increment_retry inserted for new successful:",res)
             return res.data[0] if res.data else None
     except Exception as e:
         print("❌ insert_or_increment_retry error:", e, traceback.format_exc())
