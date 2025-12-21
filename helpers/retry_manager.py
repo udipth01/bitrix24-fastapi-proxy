@@ -6,6 +6,7 @@ import requests
 import traceback
 
 from config import supabase, BOLNA_TOKEN, BITRIX_WEBHOOK
+from dateutil.parser import isoparse
 
 IST = pytz.timezone("Asia/Kolkata")
 MAX_ATTEMPTS_DEFAULT = 10
@@ -28,11 +29,11 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
             row = rows[0]
             if row.get("paused"):
                 return row
-            attempts = (row.get("attempts") or 0) + 1
-            max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
-            next_call = compute_next_call_time( row.get("lead_first_name"))
+            # attempts = (row.get("attempts") or 0) + 1
+            # max_attempts = row.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
+            next_call = get_next_allowed_call_time( row.get("lead_first_name"))
             updated = supabase.table("outbound_call_retries").update({
-                "attempts": attempts,
+                # "attempts": attempts,
                 "next_call_at": next_call.isoformat(),
                 "last_status": reason,
                 "updated_at": now.isoformat(),
@@ -41,7 +42,7 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
             return updated.data[0] if updated.data else None
         else:
             # new entry
-            next_call = compute_next_call_time(lead_first_name)
+            next_call = get_next_allowed_call_time(lead_first_name)
             payload = {
                 "lead_id": lead_id,
                 "lead_name": lead_name,
@@ -62,16 +63,16 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
         print("❌ insert_or_increment_retry error:", e, traceback.format_exc())
         return None
 
-def compute_next_call_time(lead_first_name: str | None):
-    now_ist = datetime.now(IST)
-    policy = get_lead_calling_policy(lead_first_name)
+# def compute_next_call_time(lead_first_name: str | None):
+#     now_ist = datetime.now(IST)
+#     policy = get_lead_calling_policy(lead_first_name)
 
-    if policy["retry_interval_unit"] == "minutes":
-        candidate = now_ist + timedelta(minutes=policy["retry_interval_minutes"])
-    else:
-        candidate = now_ist + timedelta(hours=policy["retry_interval_hours"])
+#     if policy["retry_interval_unit"] == "minutes":
+#         candidate = now_ist + timedelta(minutes=policy["retry_interval_minutes"])
+#     else:
+#         candidate = now_ist + timedelta(hours=policy["retry_interval_hours"])
 
-    return candidate.astimezone(timezone.utc)
+#     return candidate.astimezone(timezone.utc)
 
 
 def mark_retry_attempt(lead_id: str, bolna_call_id: str = None, status: str = None):
@@ -89,7 +90,7 @@ def mark_retry_attempt(lead_id: str, bolna_call_id: str = None, status: str = No
         bolna_ids = row.get("bolna_call_ids") or []
         if bolna_call_id:
             bolna_ids = bolna_ids + [bolna_call_id]
-        next_call = compute_next_call_time( row.get("lead_first_name"))
+        next_call = get_next_allowed_call_time( row.get("lead_first_name"))
         payload = {
             "attempts": attempts,
             "last_status": status,
@@ -136,6 +137,38 @@ def get_due_retries(limit=200):
         return []
 
 # ----------------- Bolna caller -----------------
+
+def get_next_allowed_call_time(
+    lead_first_name: str | None,
+    base_time_ist: datetime | None = None
+):
+    """
+    Returns next allowed call time in UTC,
+    respecting Sunday 10–12 hard blackout.
+    """
+    if not base_time_ist:
+        base_time_ist = datetime.now(IST)
+
+    # 🔴 HARD BLOCK: Sunday 10–12 (ALL calls)
+    if is_sunday_blackout_window(base_time_ist):
+        next_try = base_time_ist.replace(
+            hour=12, minute=1, second=0, microsecond=0
+        )
+        return next_try.astimezone(timezone.utc)
+
+    policy = get_lead_calling_policy(lead_first_name)
+
+    if policy["retry_interval_unit"] == "minutes":
+        next_try = base_time_ist + timedelta(
+            minutes=policy["retry_interval_minutes"]
+        )
+    else:
+        next_try = base_time_ist + timedelta(
+            hours=policy["retry_interval_hours"]
+        )
+
+    return next_try.astimezone(timezone.utc)
+
 
 def get_lead_calling_policy(lead_first_name: str | None):
     """
@@ -203,40 +236,40 @@ def is_sunday_blackout_window(now_ist: datetime) -> bool:
     return False
 
 
-def can_place_call_now(lead_created_at_str: str | None, attempts: int,lead_first_name: str):
-    """
-    Rule:
-      - No calls allowed after 18:00 IST, except allow 1st call if lead was created after 18:00 (special case).
-      - attempts is current attempts count (0 for first).
-    """
-    now_ist = datetime.now(IST)
-    policy = get_lead_calling_policy(lead_first_name)
+# def can_place_call_now(lead_created_at_str: str | None, attempts: int,lead_first_name: str):
+#     """
+#     Rule:
+#       - No calls allowed after 18:00 IST, except allow 1st call if lead was created after 18:00 (special case).
+#       - attempts is current attempts count (0 for first).
+#     """
+#     now_ist = datetime.now(IST)
+#     policy = get_lead_calling_policy(lead_first_name)
 
-    cutoff_hour = policy["call_cutoff_hour"]
+#     cutoff_hour = policy["call_cutoff_hour"]
 
-    # 🔴 SUNDAY BLACKOUT WINDOW
-    if is_sunday_blackout_window(now_ist):
-        return False
+#     # 🔴 SUNDAY BLACKOUT WINDOW
+#     if is_sunday_blackout_window(now_ist):
+#         return False
 
 
 
-    hour = now_ist.hour
+#     hour = now_ist.hour
 
-    if hour < cutoff_hour:
-        return True
+#     if hour < cutoff_hour:
+#         return True
 
-    # if past cutoff and it's the first attempt, allow the first attempt only if lead created after cutoff
-    if attempts == 0 and lead_created_at_str:
-        try:
-            # Bitrix date strings vary; attempt to parse ISO-like
-            from dateutil import parser
-            lead_created = parser.parse(lead_created_at_str).astimezone(IST)
-            if lead_created.hour >= cutoff_hour:
-                return True
-        except Exception:
-            # If we cannot parse, be conservative -> disallow
-            return False
-    return False
+#     # if past cutoff and it's the first attempt, allow the first attempt only if lead created after cutoff
+#     if attempts == 0 and lead_created_at_str:
+#         try:
+#             # Bitrix date strings vary; attempt to parse ISO-like
+#             from dateutil import parser
+#             lead_created = parser.parse(lead_created_at_str).astimezone(IST)
+#             if lead_created.hour >= cutoff_hour:
+#                 return True
+#         except Exception:
+#             # If we cannot parse, be conservative -> disallow
+#             return False
+#     return False
 
 # ----------------- Process due retries -----------------
 
@@ -261,22 +294,13 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
         lead_data = get_res.json().get("result", {})
         existing_comments = lead_data.get("COMMENTS") or ""
 
-        requests.post(
-            f"{BITRIX_WEBHOOK}crm.lead.update.json",
-            json={
-                "id": lead_id,
-                "fields": {
-                    "COMMENTS": existing_comments + 
-                        f"<p><b>Retry Attempt:</b> User did not pick up. Email sent.</p>"
-                }
-            }
-        )
+
 
         # Fetch lead created_at for cutoff logic
         lead_created_at = None
         try:
-            br = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id}, timeout=10)
-            lead_data = br.json().get("result", {})
+            # br = requests.get(f"{BITRIX_WEBHOOK}crm.lead.get.json", params={"id": lead_id}, timeout=10)
+            lead_data = get_res.json().get("result", {})
             lead_created_at = lead_data.get("DATE_CREATE") or lead_data.get("created_at")
         except Exception as e:
             print("⚠️ could not fetch lead created_at:", e)
@@ -289,33 +313,52 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
 
         lead_first_name =  r.get("lead_first_name")
 
-        if not can_place_call_now(lead_created_at, attempts, lead_first_name):
-            # reschedule for next working window (tomorrow 10am IST maybe)
-            policy = get_lead_calling_policy(lead_first_name)
-            now_ist = datetime.now(IST)
+        # if not can_place_call_now(lead_created_at, attempts, lead_first_name):
+        #     # reschedule for next working window (tomorrow 10am IST maybe)
+        #     policy = get_lead_calling_policy(lead_first_name)
+        #     now_ist = datetime.now(IST)
 
 
             
             # If blocked due to Sunday 10–12 window → move to 12:01 PM
-            if is_sunday_blackout_window(now_ist):
-                next_try = now_ist.replace(hour=12, minute=1, second=0, microsecond=0)
-            else:
-                if policy["retry_interval_unit"] == "minutes":
-                    next_try = now_ist + timedelta(minutes=policy["retry_interval_minutes"])
-                else:
-                    next_try = now_ist + timedelta(hours=policy["retry_interval_hours"])
+            # if is_sunday_blackout_window(now_ist):
+            #     next_try = now_ist.replace(hour=12, minute=1, second=0, microsecond=0)
+            # else:
+            #     if policy["retry_interval_unit"] == "minutes":
+            #         next_try = now_ist + timedelta(minutes=policy["retry_interval_minutes"])
+            #     else:
+            #         next_try = now_ist + timedelta(hours=policy["retry_interval_hours"])
+
+        # next_try = get_next_allowed_call_time(lead_first_name)
 
 
-            supabase.table("outbound_call_retries").update({
-                "next_call_at": next_try.isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }).eq("lead_id", lead_id).execute()
-            results.append({"lead_id": lead_id, "action": "rescheduled_due_to_cutoff"})
+        # supabase.table("outbound_call_retries").update({
+        #     "next_call_at": next_try.isoformat(),
+        #     "updated_at": datetime.now(timezone.utc).isoformat()
+        # }).eq("lead_id", lead_id).execute()
+        # results.append({"lead_id": lead_id, "action": "rescheduled_due_to_cutoff"})
+        #     # continue
+        
+        now_utc = datetime.now(timezone.utc)
+
+        if isoparse(r["next_call_at"]) > now_utc:
+            # Not time yet → do nothing
             continue
 
         # Place call
         bolna_response = place_bolna_call(phone=phone, lead_id=lead_id, lead_name=r.get("lead_name"),lead_first_name=lead_first_name)
         bolna_id = bolna_response.get("id") or bolna_response.get("call_id") or None
+
+        requests.post(
+            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            json={
+                "id": lead_id,
+                "fields": {
+                    "COMMENTS": existing_comments + 
+                        f"<p><b>Retry Attempt:</b> User did not pick up. Email sent.</p>"
+                }
+            }
+        )
 
         # Mark attempt and update bolna id
         mark_retry_attempt(lead_id=lead_id, bolna_call_id=bolna_id, status="scheduled")
