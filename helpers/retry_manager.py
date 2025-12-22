@@ -166,6 +166,31 @@ def get_due_retries(limit=200):
 
 # ----------------- Bolna caller -----------------
 
+def apply_busy_call_override(lead_id: str, busy_call_next: str):
+    """
+    Stores a ONE-TIME absolute call time that bypasses all retry rules.
+    """
+    try:
+        dt = isoparse(busy_call_next)
+
+        if dt.tzinfo is None:
+            dt = IST.localize(dt)
+
+        supabase.table("outbound_call_retries").update({
+            "busy_call_at": dt.astimezone(timezone.utc).isoformat(),
+            "busy_call_consumed": False,
+            "next_call_at": dt.astimezone(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("lead_id", lead_id).execute()
+
+        print(f"⏰ Busy override scheduled for {dt}")
+
+        return True
+    except Exception as e:
+        print("❌ Failed to apply busy_call_next:", e)
+        return False
+
+
 def get_next_allowed_call_time(
     lead_first_name: str | None,
     attempts:int = 1,
@@ -368,33 +393,56 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
 
         lead_first_name =  r.get("lead_first_name")
 
-        # if not can_place_call_now(lead_created_at, attempts, lead_first_name):
-        #     # reschedule for next working window (tomorrow 10am IST maybe)
-        #     policy = get_lead_calling_policy(lead_first_name)
-        #     now_ist = datetime.now(IST)
-
-
-            
-            # If blocked due to Sunday 10–12 window → move to 12:01 PM
-            # if is_sunday_blackout_window(now_ist):
-            #     next_try = now_ist.replace(hour=12, minute=1, second=0, microsecond=0)
-            # else:
-            #     if policy["retry_interval_unit"] == "minutes":
-            #         next_try = now_ist + timedelta(minutes=policy["retry_interval_minutes"])
-            #     else:
-            #         next_try = now_ist + timedelta(hours=policy["retry_interval_hours"])
-
-        # next_try = get_next_allowed_call_time(lead_first_name)
-
-
-        # supabase.table("outbound_call_retries").update({
-        #     "next_call_at": next_try.isoformat(),
-        #     "updated_at": datetime.now(timezone.utc).isoformat()
-        # }).eq("lead_id", lead_id).execute()
-        # results.append({"lead_id": lead_id, "action": "rescheduled_due_to_cutoff"})
-        #     # continue
-        
         now_utc = datetime.now(timezone.utc)
+
+        # 🔥🔥🔥 BUSY OVERRIDE — ABSOLUTE PRIORITY 🔥🔥🔥
+        busy_call_at = r.get("busy_call_at")
+        busy_consumed = r.get("busy_call_consumed", False)
+
+        if busy_call_at and not busy_consumed:
+            busy_dt = isoparse(busy_call_at)
+
+            # Not time yet → wait
+            if busy_dt > now_utc:
+                continue
+
+            # ⏰ Time reached → place call IMMEDIATELY (bypass all rules)
+            bolna_response = place_bolna_call(
+                phone=phone,
+                lead_id=lead_id,
+                lead_name=r.get("lead_name"),
+                lead_first_name=lead_first_name
+            )
+
+            bolna_id = bolna_response.get("id") or bolna_response.get("call_id")
+
+            # ✅ Mark override as consumed (IMPORTANT)
+            supabase.table("outbound_call_retries").update({
+                "busy_call_consumed": True,
+                "busy_call_at": None, 
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("lead_id", lead_id).execute()
+
+            # ❌ Do NOT increment attempts here
+            results.append({
+                "lead_id": lead_id,
+                "action": "busy_override_call_placed",
+                "bolna_id": bolna_id
+            })
+
+            requests.post(
+                f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                json={
+                    "fields": {
+                        "ENTITY_ID": lead_id,
+                        "ENTITY_TYPE": "lead",
+                        "COMMENT": "⏰ Busy override call placed at user-requested time"
+                    }
+                }
+            )
+
+
+            continue
 
         if isoparse(r["next_call_at"]) > now_utc:
             # Not time yet → do nothing

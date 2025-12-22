@@ -1,3 +1,4 @@
+#post_call_webhook.py
 import os
 from fastapi import APIRouter,Request
 router = APIRouter()
@@ -11,8 +12,10 @@ from helpers.retry_manager import (
     insert_or_increment_retry,
     cancel_retry_for_lead,
     mark_retry_attempt,
+    apply_busy_call_override
 )
 from helpers.email_sender import send_manual_retry_email
+from dateutil.parser import isoparse
 
 
 # ---------- Post-call webhook (Bolna → Supabase + Bitrix lead + deal+activity) ----------
@@ -46,6 +49,8 @@ async def post_call_webhook(request: Request):
         or ce.get("investment_budget")
         or ce.get("Investment_Category")  # fallback description "over 10 Lakh"
     )
+    busy_call_next = ce.get("busy_call_next")
+
 
     # ============================================================
     # 🔥 New Custom Extraction Logic: Lead Hotness + Availability
@@ -66,7 +71,8 @@ async def post_call_webhook(request: Request):
         f"Investment_Budget={investment_budget_raw} "
         f"(parsed={investment_budget_value})",
         f"Lead Hotness = {lead_hotness}", 
-        f"User Availability = {user_availability}"
+        f"User Availability = {user_availability}", 
+        f"busy call next = {busy_call_next}"
     )
 
     # Call metadata
@@ -142,6 +148,31 @@ async def post_call_webhook(request: Request):
             lead_first_name=first_name,
             reason="busy"
         )
+        # 🔥 CASE A: user explicitly gave next call time
+        if busy_call_next and busy_call_next.lower() in ("", "na", "n/a", "unknown"):
+            busy_call_next = None
+
+        if busy_call_next:
+            applied = apply_busy_call_override(
+                lead_id=lead_id,
+                busy_call_next=busy_call_next
+            )
+
+            if applied:
+                requests.post(
+                    f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                    json={
+                        "fields": {
+                            "ENTITY_ID": lead_id,
+                            "ENTITY_TYPE": "lead",
+                            "COMMENT": f"⏰ User requested call back at: {busy_call_next}"
+                        }
+                    }
+                )
+
+                return {"status": "busy_override_scheduled"}
+
+    # 🔁 CASE B: no explicit time → normal retry flow
 
         mark_retry_attempt(lead_id, bolna_call_id=bolna_id, status="busy")
 
