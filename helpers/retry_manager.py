@@ -281,9 +281,7 @@ def place_bolna_call(phone: str, lead_id: str, lead_name: str = None, user_data:
             (lead_first_name and lead_first_name.lower() == "udipth") or
             (lead_name and "udipth" in lead_name.lower())
         ):
-            agent_id = "eaa1df90-6dd4-45f3-a6e1-76c3fc01ac4b"
-        else:
-            agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
+            agent_id = select_bolna_agent(lead_name, lead_first_name)
             
         payload = {
             "agent_id": agent_id,
@@ -302,6 +300,23 @@ def place_bolna_call(phone: str, lead_id: str, lead_name: str = None, user_data:
     except Exception as e:
         print("❌ place_bolna_call error:", e)
         return {"error": str(e)}
+
+def select_bolna_agent(lead_name: str | None, lead_first_name: str | None) -> str:
+    name = (lead_name or "").lower()
+    fname = (lead_first_name or "").lower()
+
+    # High-priority / internal / associate agents
+    if (
+        "udipth" in name
+        or "udipth" in fname
+    ):
+        return "eaa1df90-6dd4-45f3-a6e1-76c3fc01ac4b"
+    else:
+        if "assoma_" in name:
+            return "eaa1df90-6dd4-45f3-a6e1-76c3fc01ac4b"
+
+    # Default sales agent
+    return "f11a2955-9639-42bb-b77f-d198f5dc352b"
 
 # ----------------- Scheduling logic (cutoff handling) -----------------
 
@@ -400,7 +415,17 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
         busy_consumed = r.get("busy_call_consumed", False)
 
         if busy_call_at and not busy_consumed:
-            busy_dt = isoparse(busy_call_at)
+            try:
+                busy_dt = isoparse(busy_call_at)
+            except Exception:
+                # ❌ Bad AI extraction → consume override and fall back to normal retries
+                supabase.table("outbound_call_retries").update({
+                    "busy_call_consumed": True,
+                    "busy_call_at": None,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).eq("lead_id", lead_id).execute()
+
+                continue
 
             # Not time yet → wait
             if busy_dt > now_utc:

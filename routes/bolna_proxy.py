@@ -62,10 +62,19 @@ async def bolna_proxy(request: Request):
     if not phone:
         return {"status": "skipped", "reason": "No phone number found"}
 
-    if "swciad_" not in lead_name.lower() and "udipth" not in lead_name.lower() and "udipth" not in lead_first_name.lower() and "ilts_" not in lead_name.lower():
+    lead_name_l = (lead_name or "").lower()
+    lead_fname_l = (lead_first_name or "").lower()
+
+    if not (
+        "swciad_" in lead_name_l
+        or "ilts_" in lead_name_l
+        or "assoma_" in lead_name_l   # ✅ ADD THIS
+        or "udipth" in lead_name_l
+        or "udipth" in lead_fname_l
+    ):
         return {
             "status": "skipped",
-            "reason": "Lead name does not contain 'SWCIAD_' or 'udipth'",
+            "reason": "Lead not eligible for auto-calling",
         }
 
 
