@@ -509,12 +509,16 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
 
 # ----------------- Functions for call now stage  -----------------
 
+def bitrix_bool(val):
+    return str(val).upper() in ("Y", "YES", "1", "TRUE")
+
+
 def fetch_call_now_leads(limit=50):
     resp = requests.get(
         f"{BITRIX_WEBHOOK}crm.lead.list.json",
         params={
             "filter[STATUS_ID]": "UC_N39RCN",
-            "filter[UF_CRM_1766405062574]": True,
+            "filter[UF_CRM_1766405062574]": "Y",
             "select[]": ["ID", "TITLE", "NAME", "PHONE"],
             "start": 0
         },timeout=10
@@ -533,6 +537,7 @@ def process_call_now_leads(limit=50):
 
         if not phone:
             continue
+        
 
         # 1️⃣ Lock lead
         lock = requests.post(
@@ -540,7 +545,7 @@ def process_call_now_leads(limit=50):
             json={
                 "id": lead_id,
                 "fields": {
-                    "UF_CRM_1766405062574": False
+                    "UF_CRM_1766405062574": "N"
                 }
             }
         )
