@@ -313,6 +313,7 @@ async def post_call_webhook(request: Request):
             get_res = requests.get(
                 f"{BITRIX_WEBHOOK}crm.lead.get.json",
                 params={"id": lead_id},
+                timeout=10
             )
             lead_data = get_res.json().get("result", {})
             existing_comments = lead_data.get("COMMENTS") or ""
