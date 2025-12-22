@@ -499,3 +499,67 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
 
         results.append({"lead_id": lead_id, "phone": phone, "bolna_id": bolna_id, "action": "call_scheduled"})
     return results
+
+# ----------------- Functions for call now stage  -----------------
+
+def fetch_call_now_leads(limit=50):
+    resp = requests.get(
+        f"{BITRIX_WEBHOOK}crm.lead.list.json",
+        params={
+            "filter[STATUS_ID]": "UC_N39RCN",
+            "filter[UF_CRM_1766405062574]": True,
+            "select[]": ["ID", "TITLE", "NAME", "PHONE"],
+            "start": 0
+        }
+    )
+    return resp.json().get("result", [])[:limit]
+
+def process_call_now_leads(limit=50):
+    leads = fetch_call_now_leads(limit)
+    processed = []
+
+    for lead in leads:
+        lead_id = lead["ID"]
+        phone = (lead.get("PHONE") or [{}])[0].get("VALUE")
+        lead_name = lead.get("TITLE")
+        lead_first_name = lead.get("NAME")
+
+        if not phone:
+            continue
+
+        # 1️⃣ Lock lead
+        lock = requests.post(
+            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            json={
+                "id": lead_id,
+                "fields": {
+                    "UF_CRM_1766405062574": False
+                }
+            }
+        )
+        if not lock.ok:
+            continue
+
+        # 2️⃣ Enqueue into retry engine
+        insert_or_increment_retry(
+            lead_id=lead_id,
+            phone=phone,
+            lead_name=lead_name,
+            lead_first_name=lead_first_name,
+            reason="call_now_stage"
+        )
+
+        # 3️⃣ Move to Unanswered
+        requests.post(
+            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            json={
+                "id": lead_id,
+                "fields": {
+                    "STATUS_ID": "14"
+                }
+            }
+        )
+
+        processed.append(lead_id)
+
+    return processed
