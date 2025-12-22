@@ -1,3 +1,4 @@
+#bolna_proxy
 from fastapi import Request,APIRouter
 import requests
 router = APIRouter()
@@ -58,50 +59,28 @@ async def bolna_proxy(request: Request):
 
     lead_first_name = lead_data.get("NAME")
 
+    if not phone:
+        return {"status": "skipped", "reason": "No phone number found"}
+
     if "swciad_" not in lead_name.lower() and "udipth" not in lead_name.lower() and "udipth" not in lead_first_name.lower() and "ilts_" not in lead_name.lower():
         return {
             "status": "skipped",
             "reason": "Lead name does not contain 'SWCIAD_' or 'udipth'",
         }
 
-    # Select agent based on lead_name
-    if "udipth" in lead_name.lower() or "udipth" in lead_first_name.lower():
-        agent_id = "eaa1df90-6dd4-45f3-a6e1-76c3fc01ac4b"
-    else:
-        agent_id = "f11a2955-9639-42bb-b77f-d198f5dc352b"
 
-    if phone:
-        bolna_payload = {
-            "agent_id": agent_id,
-            "recipient_phone_number": phone,
-            "from_phone_number": "+918035316588",
-            "user_data": {
-                "lead_id": lead_data.get("ID"),
-                "lead_name": lead_name,
-                "user_name": lead_first_name,
-                "first_name": lead_first_name,
-                "Name": lead_first_name
+    insert_or_increment_retry(
+    lead_id=lead_data.get("ID"),
+    phone=phone,
+    lead_name=lead_name,
+    lead_first_name=lead_first_name,
+    reason="bitrix_webhook"
+    )
 
-            }
-        }
-        headers = {
-            "Authorization": f"Bearer {BOLNA_TOKEN}",
-            "Content-Type": "application/json"
-        }
-
-        insert_or_increment_retry(
-        lead_id=lead_data.get("ID"),
-        phone=phone,
-        lead_name=lead_name,
-        lead_first_name=lead_first_name,
-        reason="bitrix_webhook"
-        )
-
-        return {
-            "status": "queued",
-            "lead_id": lead_data.get("ID")
-        }
+    return {
+        "status": "queued",
+        "lead_id": lead_data.get("ID")
+    }
 
 
-    return {"status": "skipped", "reason": "No phone number found"}
 

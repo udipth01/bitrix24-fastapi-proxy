@@ -4,7 +4,7 @@ from fastapi import APIRouter,Request
 router = APIRouter()
 import requests
 from helpers.parsing_utils import parse_custom_extractions,parse_budget_to_number
-from helpers.time_utils import parse_rm_meeting_time
+from helpers.time_utils import parse_rm_meeting_time,compute_busy_call_datetime
 from config import BITRIX_WEBHOOK, BOLNA_TOKEN, supabase
 from datetime import datetime, timedelta
 from helpers.deal_utils import find_deal_for_lead,get_deal_stage_semantics
@@ -148,14 +148,13 @@ async def post_call_webhook(request: Request):
             lead_first_name=first_name,
             reason="busy"
         )
-        # 🔥 CASE A: user explicitly gave next call time
-        if busy_call_next and busy_call_next.lower() in ("", "na", "n/a", "unknown"):
-            busy_call_next = None
 
-        if busy_call_next:
+        busy_dt = compute_busy_call_datetime(busy_call_next)
+
+        if busy_dt:
             applied = apply_busy_call_override(
                 lead_id=lead_id,
-                busy_call_next=busy_call_next
+                busy_call_next=busy_dt.isoformat()
             )
 
             if applied:
@@ -165,7 +164,7 @@ async def post_call_webhook(request: Request):
                         "fields": {
                             "ENTITY_ID": lead_id,
                             "ENTITY_TYPE": "lead",
-                            "COMMENT": f"⏰ User requested call back at: {busy_call_next}"
+                            "COMMENT": f"⏰ User requested callback at {busy_dt.strftime('%d %b %Y %I:%M %p IST')}"
                         }
                     }
                 )

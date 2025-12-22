@@ -1,6 +1,9 @@
+# helpers/time_utils.py
+
 from datetime import datetime, timedelta
 import pytz  # install with: pip install pytz
 import re
+from dateutil.parser import isoparse
 
 
 def utc_to_ist(utc_timestamp: str, fmt="%Y-%m-%dT%H:%M:%S%z"):
@@ -77,3 +80,63 @@ def parse_rm_meeting_time(rm_str: str | None):
 
     print("⚠️ Could not parse RM_meeting_time:", rm_str)
     return None, None
+
+
+IST = pytz.timezone("Asia/Kolkata")
+
+def compute_busy_call_datetime(busy_call_next: dict) -> datetime | None:
+    """
+    Converts AI busy_call_next semantic payload into absolute IST datetime.
+    Returns None if unusable.
+    """
+    if not busy_call_next:
+        return None
+
+    callback_type = busy_call_next.get("callback_type")
+    now = datetime.now(IST)
+
+    try:
+        # -------------------------
+        # RELATIVE DAY
+        # -------------------------
+        if callback_type == "relative_day":
+            days = int(busy_call_next.get("day_offset") or 0)
+            dt = now + timedelta(days=days)
+
+        # -------------------------
+        # RELATIVE TIME
+        # -------------------------
+        elif callback_type == "relative_time":
+            hours = int(busy_call_next.get("hour_offset") or 0)
+            minutes = int(busy_call_next.get("minute_offset") or 0)
+            dt = now + timedelta(hours=hours, minutes=minutes)
+
+        # -------------------------
+        # ABSOLUTE / AFTER DATE
+        # -------------------------
+        elif callback_type in ("absolute_date", "after_date"):
+            date_str = busy_call_next.get("absolute_date")
+            if not date_str:
+                return None
+            dt = isoparse(date_str)
+            if dt.tzinfo is None:
+                dt = IST.localize(dt)
+
+        # -------------------------
+        # UNSPECIFIED
+        # -------------------------
+        else:
+            return None
+
+        # -------------------------
+        # OPTIONAL TIME OVERRIDE
+        # -------------------------
+        time_str = busy_call_next.get("time")
+        if time_str:
+            hh, mm = map(int, time_str.split(":"))
+            dt = dt.replace(hour=hh, minute=mm, second=0, microsecond=0)
+
+        return dt
+
+    except Exception:
+        return None
