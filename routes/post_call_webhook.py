@@ -1,5 +1,6 @@
 #post_call_webhook.py
 import os
+import json
 from fastapi import APIRouter,Request
 router = APIRouter()
 import requests
@@ -148,6 +149,14 @@ async def post_call_webhook(request: Request):
             lead_first_name=first_name,
             reason="busy"
         )
+        busy_raw = busy_call_next
+
+        if isinstance(busy_raw, str):
+            try:
+                busy_call_next = json.loads(busy_raw)
+            except Exception:
+                print("❌ Invalid busy_call_next JSON:", busy_raw)
+                busy_call_next = None
 
         busy_dt = compute_busy_call_datetime(busy_call_next)
 
