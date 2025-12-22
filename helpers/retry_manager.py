@@ -518,7 +518,7 @@ def fetch_call_now_leads(limit=50):
         f"{BITRIX_WEBHOOK}crm.lead.list.json",
         params={
             "filter[STATUS_ID]": "UC_N39RCN",
-            "filter[UF_CRM_1766405062574]": "Y",
+            "filter[UF_CRM_1766405062574]": "1",
             "select[]": ["ID", "TITLE", "NAME", "PHONE"],
             "start": 0
         },timeout=10
@@ -545,7 +545,7 @@ def process_call_now_leads(limit=50):
             json={
                 "id": lead_id,
                 "fields": {
-                    "UF_CRM_1766405062574": "N"
+                    "UF_CRM_1766405062574": "0"
                 }
             }
         )
