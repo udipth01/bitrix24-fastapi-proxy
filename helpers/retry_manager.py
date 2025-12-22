@@ -7,6 +7,7 @@ import traceback
 
 from config import supabase, BOLNA_TOKEN, BITRIX_WEBHOOK
 from dateutil.parser import isoparse
+from helpers.logger import logger
 
 IST = pytz.timezone("Asia/Kolkata")
 MAX_ATTEMPTS_DEFAULT = 10
@@ -370,10 +371,13 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
     Process entries whose next_call_at <= now.
     Returns a list of dicts describing actions.
     """
+    logger.info("⏳ Checking retry queue...")
     results = []
     due = get_due_retries(limit=limit)
+    logger.info(f"📦 Due retries found: {len(due)}")
     for r in due:
         lead_id = r.get("lead_id")
+        logger.info(f"➡️ [{idx}/{len(due)}] Processing lead {lead_id}")
         phone = r.get("phone")
         attempts = r.get("attempts") or 0
         max_attempts = r.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
@@ -382,6 +386,7 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
             get_res = requests.get(
             f"{BITRIX_WEBHOOK}crm.lead.get.json",
             params={"id": lead_id},
+            timeout=10
         )
         lead_data = get_res.json().get("result", {})
         existing_comments = lead_data.get("COMMENTS") or ""
@@ -429,12 +434,14 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
                 continue
 
             # ⏰ Time reached → place call IMMEDIATELY (bypass all rules)
+            logger.info(f"📞 Calling lead {lead_id}")
             bolna_response = place_bolna_call(
                 phone=phone,
                 lead_id=lead_id,
                 lead_name=r.get("lead_name"),
                 lead_first_name=lead_first_name
             )
+            logger.info(f"📞 Bolna response received for {lead_id}")
 
             bolna_id = bolna_response.get("id") or bolna_response.get("call_id")
 
@@ -510,7 +517,7 @@ def fetch_call_now_leads(limit=50):
             "filter[UF_CRM_1766405062574]": True,
             "select[]": ["ID", "TITLE", "NAME", "PHONE"],
             "start": 0
-        }
+        },timeout=10
     )
     return resp.json().get("result", [])[:limit]
 

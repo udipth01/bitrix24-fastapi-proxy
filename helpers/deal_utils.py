@@ -5,7 +5,7 @@ from config import BITRIX_WEBHOOK
 
 def get_deal_stage_semantics(deal_id):
     url = f"{BITRIX_WEBHOOK}crm.deal.get.json"
-    response = requests.get(url, params={"id": deal_id})
+    response = requests.get(url, params={"id": deal_id},timeout=10)
     result = response.json().get("result", {})
 
     stage_id = result.get("STAGE_ID")

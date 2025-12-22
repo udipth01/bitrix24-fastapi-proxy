@@ -29,7 +29,7 @@ async def bolna_proxy(request: Request):
         return {"status": "error", "reason": "Lead ID missing"}
 
     lead_url = f"{BITRIX_WEBHOOK}crm.lead.get.json"
-    response = requests.get(lead_url, params={"id": lead_id})
+    response = requests.get(lead_url, params={"id": lead_id},timeout=10)
     if response.status_code != 200:
         return {
             "status": "error",
