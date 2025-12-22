@@ -277,11 +277,8 @@ def place_bolna_call(phone: str, lead_id: str, lead_name: str = None, user_data:
         if not BOLNA_TOKEN:
             raise RuntimeError("BOLNA_TOKEN not set")
             # Select agent based on lead_name
-        if (
-            (lead_first_name and lead_first_name.lower() == "udipth") or
-            (lead_name and "udipth" in lead_name.lower())
-        ):
-            agent_id = select_bolna_agent(lead_name, lead_first_name)
+       
+        agent_id = select_bolna_agent(lead_name, lead_first_name)
             
         payload = {
             "agent_id": agent_id,
