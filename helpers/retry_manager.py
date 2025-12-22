@@ -375,7 +375,7 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
     results = []
     due = get_due_retries(limit=limit)
     logger.info(f"📦 Due retries found: {len(due)}")
-    for r in due:
+    for idx,r in due:
         lead_id = r.get("lead_id")
         logger.info(f"➡️ [{idx}/{len(due)}] Processing lead {lead_id}")
         phone = r.get("phone")
