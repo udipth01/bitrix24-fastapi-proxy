@@ -595,8 +595,22 @@ def fetch_call_now_deals(limit=50):
 
     if not resp.ok:
         return []
+    
+    leads = resp.json().get("result", [])
 
-    return resp.json().get("result", [])[:limit]
+    seen_phones = set()
+    unique = []
+
+    for l in leads:
+        phone = (l.get("PHONE") or [{}])[0].get("VALUE")
+        if not phone or phone in seen_phones:
+            continue
+        seen_phones.add(phone)
+        unique.append(l)
+
+    return unique[:limit]
+
+    # return resp.json().get("result", [])[:limit]
 
 def process_call_now_deals(limit=50):
     deals = fetch_call_now_deals(limit)

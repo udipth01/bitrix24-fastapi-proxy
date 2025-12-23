@@ -1,5 +1,5 @@
 # process_retries.py
-from helpers.retry_manager import   process_call_now_leads,process_due_retries
+from helpers.retry_manager import   process_call_now_leads,process_due_retries,process_call_now_deals
 import time
 
 if __name__ == "__main__":
@@ -8,6 +8,9 @@ if __name__ == "__main__":
     # You can run continuously (recommended)
     while True:
         
+        print("📞 Checking Call Now leads")
+        process_call_now_deals(limit=50)
+
         print("📞 Checking Call Now leads")
         process_call_now_leads(limit=50)
         
