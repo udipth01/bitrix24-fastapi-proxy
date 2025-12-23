@@ -16,7 +16,7 @@ CALL_CUTOFF_HOUR = 6  # 6 PM IST
 
 # ----------------- Supabase helpers -----------------
 
-def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, lead_first_name: str | None = None,reason: str = None):
+def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, lead_first_name: str | None = None,reason: str = None, force_attempts: int | None = None):
     """
     If an entry exists (paused=False and attempts < max), increment attempts and update next_call_at.
     Else insert new entry with next_call_at = now + RETRY_INTERVAL_HOURS (or immediate if you want).
@@ -49,14 +49,18 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
         else:
             # new entry
             next_call = get_next_allowed_call_time(lead_first_name,attempts=0)
+            attempts = force_attempts if force_attempts is not None else 0
             payload = {
                 "lead_id": lead_id,
                 "lead_name": lead_name,
                 "lead_first_name": lead_first_name,  
                 "phone": phone,
-                "attempts": 0,
+                "attempts": attempts,
                 "max_attempts": MAX_ATTEMPTS_DEFAULT,
-                "next_call_at": next_call.isoformat(),
+                "next_call_at": get_next_allowed_call_time(
+                                lead_first_name,
+                                attempts=attempts
+                            ).isoformat(),
                 "last_status": reason,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -70,16 +74,6 @@ def insert_or_increment_retry(lead_id: str, phone: str, lead_name: str = None, l
         print("❌ insert_or_increment_retry error:", e, traceback.format_exc())
         return None
 
-# def compute_next_call_time(lead_first_name: str | None):
-#     now_ist = datetime.now(IST)
-#     policy = get_lead_calling_policy(lead_first_name)
-
-#     if policy["retry_interval_unit"] == "minutes":
-#         candidate = now_ist + timedelta(minutes=policy["retry_interval_minutes"])
-#     else:
-#         candidate = now_ist + timedelta(hours=policy["retry_interval_hours"])
-
-#     return candidate.astimezone(timezone.utc)
 
 def is_within_retry_calling_window(now_ist: datetime) -> bool:
     """
@@ -517,7 +511,6 @@ def fetch_call_now_leads(limit=50):
     resp = requests.get(
         f"{BITRIX_WEBHOOK}crm.lead.list.json",
         params={
-            "filter[STATUS_ID]": "UC_N39RCN",
             "filter[UF_CRM_1766405062574]": "1",
             "select[]": ["ID", "TITLE", "NAME", "PHONE"],
             "start": 0
@@ -558,20 +551,128 @@ def process_call_now_leads(limit=50):
             phone=phone,
             lead_name=lead_name,
             lead_first_name=lead_first_name,
-            reason="call_now_stage"
+            reason="call_now_stage",
+            force_attempts=1   # 👈 NEW
         )
 
-        # 3️⃣ Move to Unanswered
+        # 5️⃣ Traceability
         requests.post(
-            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
             json={
-                "id": lead_id,
                 "fields": {
-                    "STATUS_ID": "14"
+                    "ENTITY_TYPE": "lead",
+                    "ENTITY_ID": lead_id,
+                    "COMMENT": f"📞 Call triggered via Lead #{lead_id}."
                 }
             }
         )
 
         processed.append(lead_id)
+
+    return processed
+
+def fetch_call_now_deals(limit=50):
+    """
+    Fetch deals which are in Call Now stage and marked for processing.
+    """
+
+    resp = requests.get(
+        f"{BITRIX_WEBHOOK}crm.deal.list.json",
+        params={
+            "filter[UF_DEAL_CALL_NOW_PROCESSED]": "1",         # boolean true
+            "select[]": [
+                "ID",
+                "TITLE",
+                "STAGE_ID",
+                "LEAD_ID",
+                "UF_DEAL_CALL_NOW_PROCESSED"
+            ],
+            "order[DATE_MODIFY]": "ASC",
+            "start": 0
+        },
+        timeout=10
+    )
+
+    if not resp.ok:
+        return []
+
+    return resp.json().get("result", [])[:limit]
+
+def process_call_now_deals(limit=50):
+    deals = fetch_call_now_deals(limit)
+    processed = []
+
+    for deal in deals:
+        deal_id = deal["ID"]
+        lead_id = deal.get("LEAD_ID")
+
+        # 1️⃣ Lock the deal immediately
+        lock = requests.post(
+            f"{BITRIX_WEBHOOK}crm.deal.update.json",
+            json={
+                "id": deal_id,
+                "fields": {
+                    "UF_CRM_69494B5DD9293": "0"
+                }
+            },
+            timeout=10
+        )
+
+        if not lock.ok:
+            continue
+
+        # 2️⃣ No lead → comment + stop
+        if not lead_id:
+            requests.post(
+                f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                json={
+                    "fields": {
+                        "ENTITY_TYPE": "deal",
+                        "ENTITY_ID": deal_id,
+                        "COMMENT": "❌ Cannot make call: No lead linked to this deal."
+                    }
+                }
+            )
+            continue
+
+        # 3️⃣ Mark lead as Call Now
+        lead_update = requests.post(
+            f"{BITRIX_WEBHOOK}crm.lead.update.json",
+            json={
+                "id": lead_id,
+                "fields": {
+                    "UF_CRM_1766405062574": "1"
+                }
+            },
+            timeout=10
+        )
+
+        if not lead_update.ok:
+            requests.post(
+                f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                json={
+                    "fields": {
+                        "ENTITY_TYPE": "deal",
+                        "ENTITY_ID": deal_id,
+                        "COMMENT": "❌ Failed to trigger call on linked lead."
+                    }
+                }
+            )
+            continue
+
+        # 5️⃣ Traceability
+        requests.post(
+            f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+            json={
+                "fields": {
+                    "ENTITY_TYPE": "deal",
+                    "ENTITY_ID": deal_id,
+                    "COMMENT": f"📞 Call triggered via Lead #{lead_id}."
+                }
+            }
+        )
+        
+
+        processed.append(deal_id)
 
     return processed
