@@ -302,7 +302,7 @@ def select_bolna_agent(lead_name: str | None, lead_first_name: str | None) -> st
         "udipth" in name
         or "udipth" in fname
     ):
-        return "eaa1df90-6dd4-45f3-a6e1-76c3fc01ac4b"
+        return "30123e35-6b60-44d0-8b1a-e8bbbb6e337b"
     else:
         if "assoma_" in name:
             return "eaa1df90-6dd4-45f3-a6e1-76c3fc01ac4b"
