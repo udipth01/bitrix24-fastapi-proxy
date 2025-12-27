@@ -113,29 +113,72 @@ async def post_call_webhook(request: Request):
             break
 
     # ============================================================
-    # 🚫 USER AVAILABILITY FIRST PRIORITY
+    # 🚫 HARD STOP: LEAD HOTNESS = JUNK → Kill Lead + Deal
     # ============================================================
 
-    # --- CASE 1: user_availability = junk → Kill lead immediately ---
-    if user_availability == "junk":
-        print(f"🗑️ Lead {lead_id} marked as JUNK via AI → stopping all future calls.")
+    if lead_hotness == "JUNK" or user_availability == "junk" :
+        print(f"🗑️ Lead hotness = JUNK → moving lead & deal to JUNK")
 
-        # 1. Move lead to JUNK
+        # --------------------------------------------------------
+        # 1. Move LEAD to JUNK
+        # --------------------------------------------------------
         requests.post(
             f"{BITRIX_WEBHOOK}crm.lead.update.json",
             json={
                 "id": lead_id,
                 "fields": {
                     "STATUS_ID": "JUNK",
-                    "COMMENTS": "AI classified user as JUNK"
+                    "COMMENTS": "AI classified lead hotness as JUNK"
                 }
             }
         )
 
-        # 2. Remove lead from retry queue in Supabase
-        cancel_retry_for_lead(lead_id, reason="junk_classified")
+        # --------------------------------------------------------
+        # 2. Find linked DEAL (if exists)
+        # --------------------------------------------------------
+        deal_id = find_deal_for_lead(lead_id)
+        print("🔎 Linked deal for junk lead:", deal_id)
 
-        return {"status": "junk_lead_removed"}
+        # --------------------------------------------------------
+        # 3. Move DEAL to LOST / JUNK stage
+        # --------------------------------------------------------
+        if deal_id:
+            DEAL_JUNK_STAGE_ID = "LOSE"  # 🔴 CHANGE if needed
+
+            requests.post(
+                f"{BITRIX_WEBHOOK}crm.deal.update.json",
+                json={
+                    "id": deal_id,
+                    "fields": {
+                        "STAGE_ID": DEAL_JUNK_STAGE_ID
+                    }
+                }
+            )
+
+            # Optional: add timeline comment
+            requests.post(
+                f"{BITRIX_WEBHOOK}crm.timeline.comment.add",
+                json={
+                    "fields": {
+                        "ENTITY_ID": deal_id,
+                        "ENTITY_TYPE": "deal",
+                        "COMMENT": "🗑️ Deal marked as LOST — AI classified lead as JUNK"
+                    }
+                }
+            )
+
+        # --------------------------------------------------------
+        # 4. Cancel retries & future calls
+        # --------------------------------------------------------
+        cancel_retry_for_lead(lead_id, reason="lead_hotness_junk")
+
+        return {
+            "status": "junk_lead_and_deal_closed",
+            "lead_id": lead_id,
+            "deal_id": deal_id
+        }
+
+
 
  
     # --- CASE 2: user_availability = busy → treat like failure state ---

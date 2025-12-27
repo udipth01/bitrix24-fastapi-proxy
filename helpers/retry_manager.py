@@ -11,7 +11,7 @@ from helpers.logger import logger
 
 IST = pytz.timezone("Asia/Kolkata")
 MAX_ATTEMPTS_DEFAULT = 10
-RETRY_INTERVAL_HOURS = 2
+RETRY_INTERVAL_HOURS = 3
 CALL_CUTOFF_HOUR = 6  # 6 PM IST
 
 # ----------------- Supabase helpers -----------------
@@ -562,7 +562,7 @@ def process_call_now_leads(limit=50):
                 "fields": {
                     "ENTITY_TYPE": "lead",
                     "ENTITY_ID": lead_id,
-                    "COMMENT": f"📞 Call triggered via Lead #{lead_id}."
+                    "COMMENT": f"📞 Call triggered via Lead #{lead_id}. Call will be done after 2 hours"
                 }
             }
         )
@@ -681,7 +681,7 @@ def process_call_now_deals(limit=50):
                 "fields": {
                     "ENTITY_TYPE": "deal",
                     "ENTITY_ID": deal_id,
-                    "COMMENT": f"📞 Call triggered via Lead #{lead_id}."
+                    "COMMENT": f"📞 Call triggered via Lead #{lead_id}. Call will be done after 2 hours"
                 }
             }
         )
