@@ -162,7 +162,12 @@ def get_due_retries(limit=200):
 # ----------------- Bolna caller -----------------
 
 def can_bypass_time_restrictions(lead_first_name: str | None) -> bool:
-    return bool(lead_first_name and lead_first_name.lower() == "udipth")
+    return bool(lead_first_name and "udipth" in lead_first_name.lower())
+
+def get_cooldown_delta(lead_first_name: str | None) -> timedelta:
+    if lead_first_name and "udipth" in lead_first_name.lower():
+        return timedelta(minutes=3)
+    return timedelta(hours=RETRY_INTERVAL_HOURS)
 
 
 def apply_busy_call_override(lead_id: str, busy_call_next: str):
@@ -256,7 +261,7 @@ def get_lead_calling_policy(lead_first_name: str | None):
     """
     Returns retry interval and cutoff hour based on lead.
     """
-    if lead_first_name and lead_first_name.lower() == "udipth":
+    if lead_first_name and "udipth" in lead_first_name.lower():
         return {
             "retry_interval_minutes": RETRY_INTERVAL_HOURS ,  # minutes
             "retry_interval_unit": "minutes",
@@ -384,8 +389,9 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
         last_call_at = r.get("last_call_at")
 
         if last_call_at:
+            cooldown = get_cooldown_delta(lead_first_name)
             delta = datetime.now(timezone.utc) - isoparse(last_call_at)
-            if delta < timedelta(hours=RETRY_INTERVAL_HOURS):
+            if delta < cooldown:
                 logger.warning(
                     f"⛔ Cooldown active for lead {lead_id}. "
                     f"Last call {delta} ago"
@@ -491,7 +497,7 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
 
         now_utc = datetime.now(timezone.utc)
         now_ist = now_utc.astimezone(IST)
-        
+
         if is_sunday_blackout_window(now_ist):
             next_try = get_next_allowed_call_time(lead_first_name)
             supabase.table("outbound_call_retries").update({
@@ -514,6 +520,11 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
 
             logger.info(f"⛔ Skipped call after cutoff. Rescheduled at {next_try}")
             continue
+
+        if can_bypass_time_restrictions(lead_first_name):
+            logger.info(f"⚡ Time window bypass for lead {lead_id}")
+
+
 
 
         # Place call
