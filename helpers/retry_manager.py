@@ -161,6 +161,10 @@ def get_due_retries(limit=200):
 
 # ----------------- Bolna caller -----------------
 
+def can_bypass_time_restrictions(lead_first_name: str | None) -> bool:
+    return bool(lead_first_name and lead_first_name.lower() == "udipth")
+
+
 def apply_busy_call_override(lead_id: str, busy_call_next: str):
     """
     Stores a ONE-TIME absolute call time that bypasses all retry rules.
@@ -207,7 +211,10 @@ def get_next_allowed_call_time(
     
     # ✅ FIRST CALL → IMMEDIATE
     if attempts == 0:
-        return base_time_ist.astimezone(timezone.utc)
+        if is_within_retry_calling_window(base_time_ist):
+            return base_time_ist.astimezone(timezone.utc)
+        return next_retry_window_start(base_time_ist).astimezone(timezone.utc)
+
 
     # policy = get_lead_calling_policy(lead_first_name)
 
@@ -253,13 +260,11 @@ def get_lead_calling_policy(lead_first_name: str | None):
         return {
             "retry_interval_minutes": RETRY_INTERVAL_HOURS ,  # minutes
             "retry_interval_unit": "minutes",
-            "call_cutoff_hour": 23
         }
     else:
         return {
             "retry_interval_hours": RETRY_INTERVAL_HOURS,
             "retry_interval_unit": "hours",
-            "call_cutoff_hour": CALL_CUTOFF_HOUR
         }
 
 
@@ -376,6 +381,18 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
         attempts = r.get("attempts") or 0
         max_attempts = r.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
 
+        last_call_at = r.get("last_call_at")
+
+        if last_call_at:
+            delta = datetime.now(timezone.utc) - isoparse(last_call_at)
+            if delta < timedelta(hours=RETRY_INTERVAL_HOURS):
+                logger.warning(
+                    f"⛔ Cooldown active for lead {lead_id}. "
+                    f"Last call {delta} ago"
+                )
+                continue
+
+
         if lead_id:
             get_res = requests.get(
             f"{BITRIX_WEBHOOK}crm.lead.get.json",
@@ -443,6 +460,7 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
             supabase.table("outbound_call_retries").update({
                 "busy_call_consumed": True,
                 "busy_call_at": None, 
+                "last_call_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }).eq("lead_id", lead_id).execute()
 
@@ -471,7 +489,9 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
             # Not time yet → do nothing
             continue
 
-        now_ist = datetime.now(IST)
+        now_utc = datetime.now(timezone.utc)
+        now_ist = now_utc.astimezone(IST)
+        
         if is_sunday_blackout_window(now_ist):
             next_try = get_next_allowed_call_time(lead_first_name)
             supabase.table("outbound_call_retries").update({
@@ -480,9 +500,31 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
             }).eq("lead_id", lead_id).execute()
             continue
 
+
+        if (
+            not can_bypass_time_restrictions(lead_first_name)
+            and not is_within_retry_calling_window(now_ist)
+        ):
+            next_try = next_retry_window_start(now_ist)
+
+            supabase.table("outbound_call_retries").update({
+                "next_call_at": next_try.astimezone(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("lead_id", lead_id).execute()
+
+            logger.info(f"⛔ Skipped call after cutoff. Rescheduled at {next_try}")
+            continue
+
+
         # Place call
         bolna_response = place_bolna_call(phone=phone, lead_id=lead_id, lead_name=r.get("lead_name"),lead_first_name=lead_first_name)
         bolna_id = bolna_response.get("id") or bolna_response.get("call_id") or None
+
+        supabase.table("outbound_call_retries").update({
+            "last_call_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("lead_id", lead_id).execute()
+
 
         requests.post(
             f"{BITRIX_WEBHOOK}crm.lead.update.json",
