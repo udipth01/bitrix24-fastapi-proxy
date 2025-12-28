@@ -386,18 +386,6 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
         attempts = r.get("attempts") or 0
         max_attempts = r.get("max_attempts") or MAX_ATTEMPTS_DEFAULT
 
-        last_call_at = r.get("last_call_at")
-
-        if last_call_at:
-            cooldown = get_cooldown_delta(lead_first_name)
-            delta = datetime.now(timezone.utc) - isoparse(last_call_at)
-            if delta < cooldown:
-                logger.warning(
-                    f"⛔ Cooldown active for lead {lead_id}. "
-                    f"Last call {delta} ago"
-                )
-                continue
-
 
         if lead_id:
             get_res = requests.get(
@@ -426,6 +414,20 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
             continue
 
         lead_first_name =  r.get("lead_first_name")
+
+        last_call_at = r.get("last_call_at")
+
+        if last_call_at:
+            cooldown = get_cooldown_delta(lead_first_name)
+            delta = datetime.now(timezone.utc) - isoparse(last_call_at)
+            if delta < cooldown:
+                logger.warning(
+                    f"⛔ Cooldown active for lead {lead_id}. "
+                    f"Last call {delta} ago"
+                )
+                continue
+
+
 
         now_utc = datetime.now(timezone.utc)
 
