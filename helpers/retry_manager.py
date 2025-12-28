@@ -332,6 +332,10 @@ def is_sunday_blackout_window(now_ist: datetime) -> bool:
             return True
     return False
 
+def ensure_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 # def can_place_call_now(lead_created_at_str: str | None, attempts: int,lead_first_name: str):
 #     """
@@ -419,7 +423,11 @@ def process_due_retries(verify_bitrix_lead=True, limit=200):
 
         if last_call_at:
             cooldown = get_cooldown_delta(lead_first_name)
-            delta = datetime.now(timezone.utc) - isoparse(last_call_at)
+            last_dt = ensure_utc(isoparse(last_call_at))
+            now_utc = datetime.now(timezone.utc)
+
+            delta = now_utc - last_dt
+
             if delta < cooldown:
                 logger.warning(
                     f"⛔ Cooldown active for lead {lead_id}. "
