@@ -34,3 +34,4 @@ if __name__ == "__main__":
 
 #https://finideas.bitrix24.in/rest/24/hdyr7b0qithutnpx/crm.lead.fields.json
 #https://finideas.bitrix24.in/rest/24/hdyr7b0qithutnpx/crm.status.list.json
+#curl -X GET "https://finideas.bitrix24.in/rest/24/hdyr7b0qithutnpx/crm.lead.get.json?id=577572"

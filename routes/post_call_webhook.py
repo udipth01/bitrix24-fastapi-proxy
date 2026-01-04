@@ -15,8 +15,7 @@ from helpers.retry_manager import (
     mark_retry_attempt,
     apply_busy_call_override
 )
-from helpers.email_sender import send_manual_retry_email
-from dateutil.parser import isoparse
+from helpers.email_sender import  send_retry_email_once_per_day
 
 
 # ---------- Post-call webhook (Bolna → Supabase + Bitrix lead + deal+activity) ----------
@@ -278,7 +277,7 @@ async def post_call_webhook(request: Request):
             }
         )
 
-        send_manual_retry_email(lead_id=lead_id,lead_name=first_name,lead_phone=recipient_phone,lead_email=lead_email)
+        send_retry_email_once_per_day(lead_id=lead_id,lead_name=first_name,lead_phone=recipient_phone,lead_email=lead_email,reason=status)
 
         # END — Do **NOT** continue with ILTS logic
         return {"status": "retry_scheduled"}

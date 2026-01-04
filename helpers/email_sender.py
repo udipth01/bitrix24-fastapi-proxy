@@ -1,6 +1,7 @@
 import requests
 from config import BITRIX_WEBHOOK
-
+from datetime import datetime, timedelta, timezone
+from config import BITRIX_WEBHOOK, supabase
 def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
     """
     Sends an email to lead via Bitrix REST API without changing the lead stage.
@@ -95,3 +96,60 @@ def send_manual_retry_email(lead_id, lead_name, lead_phone, lead_email):
     print("📩 Bitrix email response:", res.text)
 
     return res.json()
+
+
+def can_send_email_today(lead_id: str, email_type: str) -> bool:
+    """
+    Returns True if email of given type has NOT been sent today (UTC)
+    """
+    now = datetime.now(timezone.utc)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    res = (
+        supabase.table("lead_email_log")
+        .select("id")
+        .eq("lead_id", lead_id)
+        .eq("email_type", email_type)
+        .gte("sent_at", start_of_day.isoformat())
+        .execute()
+    )
+
+    return len(res.data or []) == 0
+
+def send_retry_email_once_per_day(
+    *,
+    lead_id: str,
+    lead_name: str | None,
+    lead_phone: str | None,
+    lead_email: str | None,
+    reason: str = "unable_to_connect"
+):
+    EMAIL_TYPE = "unable_to_connect"
+
+    if not lead_email:
+        print("📭 No email available — skipping retry email")
+        return
+
+    if not can_send_email_today(lead_id, EMAIL_TYPE):
+        print(f"📧 Retry email already sent today for lead {lead_id} — skipping")
+        return
+
+    # ✅ Send email
+    send_manual_retry_email(
+        lead_id=lead_id,
+        lead_name=lead_name,
+        lead_phone=lead_phone,
+        lead_email=lead_email
+    )
+
+    # ✅ Log AFTER sending
+    supabase.table("lead_email_log").insert({
+        "lead_id": lead_id,
+        "email_type": EMAIL_TYPE,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "meta": {
+            "reason": reason
+        }
+    }).execute()
+
+    print(f"📧 Retry email sent & logged for lead {lead_id}")
